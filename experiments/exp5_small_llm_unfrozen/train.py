@@ -1,0 +1,404 @@
+"""Iteration 4 training: Poly-Encoder on all-roberta-large-v1 (355M/encoder),
+combined CLINC150 + Banking77 + SNIPS (234 intents, ~38k examples before
+the zero-shot holdout), with a real zero-shot generalization test.
+
+DL techniques applied, each for a concrete reason:
+  - Poly-encoder scoring (model_v4.py) instead of pure bi-encoder mean
+    pooling -- more accurate compatibility scoring while staying mostly
+    parallel/cacheable (Humeau et al., 2019).
+  - Partial layer freezing (bottom 16/24 layers frozen) -- standard
+    large-model fine-tuning practice; lower transformer layers hold
+    generic language structure, only the top layers + poly head need to
+    adapt to this task, and freezing the rest saves a large chunk of
+    optimizer memory.
+  - Layer-wise learning-rate decay on the trainable top layers -- layers
+    closer to the frozen block get a smaller LR than layers closer to the
+    (randomly initialized) task head, which typically stabilizes
+    fine-tuning of deep transformers.
+  - 8-bit AdamW (bitsandbytes) -- cuts optimizer state memory roughly 4x
+    vs. fp32 AdamW, which is what makes a 355M-param backbone with an
+    unfrozen top third fit in 12GB alongside activations.
+  - Mixed precision (fp16 autocast + GradScaler) + gradient checkpointing
+    on the backbone -- memory/speed, lets us afford a larger effective
+    batch via gradient accumulation.
+  - Label smoothing (0.1) on the compatibility softmax -- standard
+    regularizer against over-confident wrong answers, useful here because
+    many candidate outcomes are semantically very close (Banking77).
+  - Outcome-description augmentation (carried over from iteration 3, the
+    fix that actually closed the paraphrase gap) -- resampled every step
+    from dataset_v4.sample_outcome_description.
+
+Evaluation, four axes:
+  1. In-scope test accuracy (seen intents, base descriptions).
+  2. Paraphrase generalization (seen intents, unseen description wording).
+  3. TRUE zero-shot generalization: intents with ZERO training examples
+     and ZERO description exposure during training, tested against a
+     candidate pool mixing seen + unseen intents.
+  4. OOS separation (CLINC150's explicit out-of-scope examples).
+"""
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+
+import argparse
+import math
+import time
+import random
+import torch
+import torch.nn as nn
+from torch.amp import autocast, GradScaler
+
+# Qwen2.5's checkpoint loads in bfloat16 by default (unlike the fp32
+# BERT-family backbones in earlier experiments). bf16 has fp32-like
+# dynamic range, so it needs no loss-scaling -- GradScaler is fp16-only
+# and errors on bf16 gradients ("_amp_foreach_non_finite_check_and_unscale_
+# not implemented for 'BFloat16'", hit during smoke-testing). This no-op
+# stand-in keeps the rest of the training loop's scaler.* calls unchanged.
+AUTOCAST_DTYPE = torch.bfloat16
+
+
+class _NoOpScaler:
+    def scale(self, loss):
+        return loss
+
+    def unscale_(self, optimizer):
+        pass
+
+    def step(self, optimizer):
+        optimizer.step()
+
+    def update(self):
+        pass
+
+from dataset_v4 import build_combined_dataset, sample_outcome_description, base_description, raw_intent_name
+from paraphrases_v4 import get_paraphrases
+from model import JEPAPolyEncoderV4, get_tokenizer  # EXPERIMENT 4: local model.py (Qwen2.5-1.5B decoder backbone)
+
+try:
+    import bitsandbytes as bnb
+    HAS_BNB = True
+except ImportError:
+    HAS_BNB = False
+
+
+def tokenize(tokenizer, texts, device, max_length=32):
+    # No query:/passage: prefixing here -- that was e5-large-v2's specific
+    # contrastive-training convention (experiment 1). Qwen2.5 is a plain
+    # decoder LLM with no such convention; our own fine-tuning is what
+    # teaches it the context/outcome distinction, not a fixed prefix.
+    enc = tokenizer(texts, padding=True, truncation=True, max_length=max_length, return_tensors="pt")
+    return enc["input_ids"].to(device), enc["attention_mask"].to(device)
+
+
+def tokenize_context(tokenizer, texts, device, max_length=32):
+    return tokenize(tokenizer, texts, device, max_length)
+
+
+def tokenize_outcome(tokenizer, texts, device, max_length=32):
+    return tokenize(tokenizer, texts, device, max_length)
+
+
+def encode_outcome_bank(model, tokenizer, texts, device, chunk_size=64):
+    """Encodes a (possibly large, ~199-candidate) outcome bank in small
+    chunks instead of one giant forward pass. The context side only ever
+    processes `batch_size` (8) examples at once, but earlier code encoded
+    the WHOLE outcome bank in a single forward pass every step -- for a
+    3.1B-param backbone that is effectively a batch of 199, not 8, and is
+    what actually caused the mid-training OOM (not batch_size or
+    freeze_layers, which barely moved memory in smoke tests because this
+    was always the dominant cost). Chunking keeps peak activation memory
+    bounded by chunk_size regardless of how many candidates there are;
+    autograd concatenates the chunks' outputs into one differentiable
+    graph exactly as if they were computed together, so this changes
+    nothing about correctness or gradients, only peak memory."""
+    embeddings = []
+    for i in range(0, len(texts), chunk_size):
+        chunk = texts[i:i + chunk_size]
+        otok, omask = tokenize_outcome(tokenizer, chunk, device)
+        with autocast(device_type=device.type, dtype=AUTOCAST_DTYPE, enabled=(device.type == "cuda")):
+            embeddings.append(model.encode_outcome(otok, omask))
+    return torch.cat(embeddings, dim=0)
+
+
+def build_param_groups(model: JEPAPolyEncoderV4, base_lr: float, decay: float = 0.9):
+    """Layer-wise LR decay: trainable backbone layers closer to the frozen
+    block get progressively smaller LR than layers near the output; the
+    randomly-initialized heads (poly-attention, projections, temperature)
+    get a higher LR since they start from scratch."""
+    groups = []
+    head_params = []
+
+    for encoder in [model.context_encoder, model.outcome_encoder]:
+        # Qwen2.5 is a flat `.layers` list (decoder-style), not BERT's
+        # `.encoder.layer` -- matches model.py's _freeze().
+        trainable_layers = [layer for layer in encoder.backbone.layers if
+                             any(p.requires_grad for p in layer.parameters())]
+        n = len(trainable_layers)
+        for i, layer in enumerate(trainable_layers):
+            lr = base_lr * (decay ** (n - 1 - i))
+            groups.append({"params": [p for p in layer.parameters() if p.requires_grad], "lr": lr})
+        head_params += [p for n_, p in encoder.named_parameters()
+                         if p.requires_grad and "backbone.layers" not in n_]
+
+    head_params.append(model.log_temperature)
+    groups.append({"params": head_params, "lr": base_lr * 5})
+    return groups
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--epochs", type=int, default=30)
+    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--grad_accum", type=int, default=3)
+    parser.add_argument("--freeze_layers", type=int, default=16)
+    parser.add_argument("--n_codes", type=int, default=16)
+    parser.add_argument("--base_lr", type=float, default=1e-5)
+    parser.add_argument("--patience", type=int, default=8)
+    parser.add_argument("--max_train", type=int, default=None)
+    parser.add_argument("--max_val", type=int, default=None)
+    args = parser.parse_args()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}", flush=True)
+    if device.type == "cuda":
+        print(f"GPU: {torch.cuda.get_device_name(0)}", flush=True)
+    print(f"bitsandbytes available: {HAS_BNB}", flush=True)
+
+    data = build_combined_dataset()
+    train_ex, val_ex = data["train"], data["val"]
+    test_ex, test_oos_ex, test_zs_ex = data["test"], data["test_oos"], data["test_zero_shot"]
+    seen_labels, all_labels = data["seen_labels"], data["all_labels"]
+    zero_shot_labels = set(data["zero_shot_labels"])
+
+    if args.max_train:
+        train_ex = train_ex[:args.max_train]
+    if args.max_val:
+        val_ex = val_ex[:args.max_val]
+
+    seen_idx = {l: i for i, l in enumerate(seen_labels)}
+    all_idx = {l: i for i, l in enumerate(all_labels)}
+
+    print(f"Train/val/test (seen intents): {len(train_ex)}/{len(val_ex)}/{len(test_ex)}  "
+          f"| OOS test: {len(test_oos_ex)}  | zero-shot test: {len(test_zs_ex)}", flush=True)
+    print(f"Seen intents: {len(seen_labels)}  | zero-shot (held out) intents: {len(zero_shot_labels)}  "
+          f"| total: {len(all_labels)}", flush=True)
+
+    tokenizer = get_tokenizer()
+    model = JEPAPolyEncoderV4(freeze_layers=args.freeze_layers, n_codes=args.n_codes).to(device)
+    backbone_has_trainable = any(p.requires_grad for p in model.context_encoder.backbone.parameters())
+    if backbone_has_trainable:
+        model.enable_gradient_checkpointing()
+        print("Gradient checkpointing enabled (backbone has trainable layers).", flush=True)
+    else:
+        # Fully frozen backbone: autograd builds NO graph through it at all
+        # (every op's inputs have requires_grad=False), so the backbone
+        # forward is exactly as cheap as pure inference -- no backward,
+        # no gradient checkpointing needed, and no optimizer state for its
+        # 3B params. This is what actually fixes the ~5.4h/epoch problem,
+        # not chunking alone.
+        print("Backbone fully frozen: skipping gradient checkpointing (no graph built through it).", flush=True)
+    print(f"Model params: {model.num_params():,}  trainable: {model.num_trainable_params():,} "
+          f"({100 * model.num_trainable_params() / model.num_params():.1f}%)", flush=True)
+
+    param_groups = build_param_groups(model, args.base_lr)
+    if HAS_BNB and device.type == "cuda":
+        optimizer = bnb.optim.AdamW8bit(param_groups, weight_decay=0.01)
+        print("Using bitsandbytes 8-bit AdamW", flush=True)
+    else:
+        optimizer = torch.optim.AdamW(param_groups, weight_decay=0.01)
+        print("Using standard fp32 AdamW", flush=True)
+
+    ce = nn.CrossEntropyLoss(label_smoothing=0.1)
+
+    batch_size = args.batch_size
+    epochs = args.epochs
+    n = len(train_ex)
+    micro_steps_per_epoch = math.ceil(n / batch_size)
+    opt_steps_per_epoch = math.ceil(micro_steps_per_epoch / args.grad_accum)
+    total_opt_steps = opt_steps_per_epoch * epochs
+    warmup_steps = max(1, int(total_opt_steps * 0.05))
+
+    def lr_scale(step):
+        if step < warmup_steps:
+            return step / warmup_steps
+        progress = (step - warmup_steps) / max(1, total_opt_steps - warmup_steps)
+        return 0.5 * (1 + math.cos(math.pi * progress))
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_scale)
+    scaler = _NoOpScaler()
+
+    seed_counter = [0]
+
+    def make_augmented_bank(label_list):
+        rng = random.Random(2000 + seed_counter[0])
+        seed_counter[0] += 1
+        return [sample_outcome_description(raw_intent_name(l), rng) for l in label_list]
+
+    base_seen_texts = [base_description(raw_intent_name(l)) for l in seen_labels]
+    base_all_texts = [base_description(raw_intent_name(l)) for l in all_labels]
+
+    def run_eval(examples, label_list, outcome_texts_eval, idx_map, eval_bs=24):
+        model.eval()
+        with torch.no_grad():
+            out_emb = encode_outcome_bank(model, tokenizer, outcome_texts_eval, device)
+        correct, total = 0, 0
+        with torch.no_grad():
+            for i in range(0, len(examples), eval_bs):
+                batch = examples[i:i + eval_bs]
+                texts = [t for t, _ in batch]
+                lab = torch.tensor([idx_map[l] for _, l in batch], device=device)
+                ctok, cmask = tokenize_context(tokenizer, texts, device)
+                with autocast(device_type=device.type, dtype=AUTOCAST_DTYPE, enabled=(device.type == "cuda")):
+                    ctx_codes = model.encode_context(ctok, cmask)
+                    logits = model.compatibility(ctx_codes, out_emb)
+                preds = logits.argmax(dim=-1)
+                correct += (preds == lab).sum().item()
+                total += len(batch)
+        model.train()
+        return correct / total
+
+    def run_oos_check(outcome_texts_eval, n_sample=1000, eval_bs=24):
+        model.eval()
+        with torch.no_grad():
+            out_emb = encode_outcome_bank(model, tokenizer, outcome_texts_eval, device)
+
+        def max_sim(examples):
+            sims = []
+            with torch.no_grad():
+                for i in range(0, len(examples), eval_bs):
+                    batch = examples[i:i + eval_bs]
+                    texts = [t for t, _ in batch]
+                    ctok, cmask = tokenize_context(tokenizer, texts, device)
+                    with autocast(device_type=device.type, dtype=AUTOCAST_DTYPE, enabled=(device.type == "cuda")):
+                        ctx_codes = model.encode_context(ctok, cmask)
+                        logits = model.compatibility(ctx_codes, out_emb)
+                    sims.append(logits.max(dim=-1).values)
+            return torch.cat(sims)
+
+        in_scope_sim = max_sim(test_ex[:n_sample])
+        oos_sim = max_sim(test_oos_ex)
+        model.train()
+        return in_scope_sim.mean().item(), oos_sim.mean().item()
+
+    ckpt_dir = os.path.dirname(__file__)
+    os.makedirs(ckpt_dir, exist_ok=True)
+    best_val = -1.0
+    best_zero_shot = -1.0
+    no_improve = 0
+
+    # Experiment 4 found the val_acc-best checkpoint (epoch 5) was WORSE
+    # on every generalization metric than a later, non-"best" checkpoint
+    # (epoch 9) -- val_acc plateauing does not mean generalization stopped
+    # improving. Tracking zero-shot accuracy every epoch (on a fixed
+    # subset, for speed) and saving a SEPARATE best-by-zero-shot checkpoint
+    # means we don't have to rediscover this by manually evaluating saved
+    # checkpoints after the fact again.
+    zero_shot_eval_subset = test_zs_ex[:400]
+
+    print("\n=== Training ===", flush=True)
+    opt_step = 0
+    for epoch in range(1, epochs + 1):
+        t0 = time.time()
+        perm = torch.randperm(n).tolist()
+        total_loss = 0.0
+        optimizer.zero_grad()
+
+        for micro_i, i in enumerate(range(0, n, batch_size)):
+            idx = perm[i:i + batch_size]
+            batch = [train_ex[j] for j in idx]
+            texts = [t for t, _ in batch]
+            lab = torch.tensor([seen_idx[l] for _, l in batch], device=device)
+
+            ctok, cmask = tokenize_context(tokenizer, texts, device)
+            outcome_texts = make_augmented_bank(seen_labels)
+            out_emb = encode_outcome_bank(model, tokenizer, outcome_texts, device)  # chunked, gradients flow
+
+            with autocast(device_type=device.type, dtype=AUTOCAST_DTYPE, enabled=(device.type == "cuda")):
+                ctx_codes = model.encode_context(ctok, cmask)
+                logits = model.compatibility(ctx_codes, out_emb)
+                loss = ce(logits, lab) / args.grad_accum
+
+            scaler.scale(loss).backward()
+            total_loss += loss.item() * args.grad_accum * len(idx)
+
+            is_last_micro = (micro_i + 1) == micro_steps_per_epoch
+            if (micro_i + 1) % args.grad_accum == 0 or is_last_micro:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad()
+                if opt_step < total_opt_steps:
+                    scheduler.step()
+                opt_step += 1
+
+        val_acc = run_eval(val_ex, seen_labels, base_seen_texts, seen_idx)
+        zero_shot_acc = run_eval(zero_shot_eval_subset, all_labels, base_all_texts, all_idx)
+        dt = time.time() - t0
+        cur_lr = scheduler.get_last_lr()[-1]
+        print(f"epoch {epoch}/{epochs}  loss {total_loss / n:.4f}  val_acc {val_acc:.4f}  "
+              f"zero_shot_acc {zero_shot_acc:.4f}  lr {cur_lr:.2e}  ({dt:.1f}s)", flush=True)
+
+        torch.save({"model_state": model.state_dict(), "epoch": epoch, "val_acc": val_acc,
+                    "zero_shot_acc": zero_shot_acc},
+                   os.path.join(ckpt_dir, "exp5_latest.pt"))
+
+        if zero_shot_acc > best_zero_shot:
+            best_zero_shot = zero_shot_acc
+            torch.save({"model_state": model.state_dict(), "epoch": epoch, "val_acc": val_acc,
+                        "zero_shot_acc": zero_shot_acc},
+                       os.path.join(ckpt_dir, "exp5_best_zeroshot.pt"))
+            print(f"  -> new best zero_shot_acc {zero_shot_acc:.4f}, saved exp5_best_zeroshot.pt", flush=True)
+
+        if val_acc > best_val:
+            best_val = val_acc
+            no_improve = 0
+            torch.save({"model_state": model.state_dict(), "epoch": epoch, "val_acc": val_acc,
+                        "zero_shot_acc": zero_shot_acc},
+                       os.path.join(ckpt_dir, "exp5_best.pt"))
+            print(f"  -> new best val_acc {val_acc:.4f}, saved exp5_best.pt", flush=True)
+        else:
+            no_improve += 1
+            if no_improve >= args.patience:
+                print(f"  Early stopping: no improvement for {args.patience} epochs.", flush=True)
+                break
+
+    print("\n=== Final evaluation (best checkpoint) ===", flush=True)
+    best_ckpt = torch.load(os.path.join(ckpt_dir, "exp5_best.pt"), map_location=device)
+    model.load_state_dict(best_ckpt["model_state"])
+    print(f"Loaded best checkpoint from epoch {best_ckpt['epoch']} (val_acc {best_ckpt['val_acc']:.4f})", flush=True)
+
+    test_acc = run_eval(test_ex, seen_labels, base_seen_texts, seen_idx)
+    print(f"test_acc (seen intents, base descriptions): {test_acc:.4f}", flush=True)
+
+    paraphrases = get_paraphrases()
+    paraphrases = {k: v for k, v in paraphrases.items() if k in seen_idx}  # only ones actually trained on
+    para_texts = [paraphrases.get(l, base_description(raw_intent_name(l))) for l in seen_labels]
+    test_para_subset = [(t, l) for t, l in test_ex if l in paraphrases]
+    para_acc = run_eval(test_para_subset, seen_labels, para_texts, seen_idx)
+    base_acc_subset = run_eval(test_para_subset, seen_labels, base_seen_texts, seen_idx)
+    print(f"test_acc, {len(paraphrases)}-intent subset, UNSEEN paraphrases: {para_acc:.4f}  "
+          f"(n={len(test_para_subset)})", flush=True)
+    print(f"  same subset, base descriptions: {base_acc_subset:.4f}", flush=True)
+
+    # True zero-shot: candidate pool = ALL intents (seen + never-trained-on),
+    # test examples = ONLY the never-trained-on intents.
+    zs_acc = run_eval(test_zs_ex, all_labels, base_all_texts, all_idx)
+    # For reference: same candidate pool, but scored on seen-intent test examples too.
+    seen_in_mixed_pool_acc = run_eval(test_ex[:1500], all_labels, base_all_texts, all_idx)
+    print(f"\nZERO-SHOT test_acc ({len(zero_shot_labels)} never-trained intents, "
+          f"candidate pool = all {len(all_labels)} intents): {zs_acc:.4f}  (n={len(test_zs_ex)})", flush=True)
+    print(f"  (reference) seen-intent test_acc in the SAME mixed {len(all_labels)}-way pool: "
+          f"{seen_in_mixed_pool_acc:.4f}", flush=True)
+    chance = 1.0 / len(all_labels)
+    print(f"  chance level in a {len(all_labels)}-way pool: {chance:.4f}", flush=True)
+
+    in_scope_sim, oos_sim = run_oos_check(base_seen_texts)
+    print(f"\nOOS separation: mean max-compat-logit  in-scope={in_scope_sim:.4f}  oos={oos_sim:.4f}  "
+          f"gap={in_scope_sim - oos_sim:.4f}", flush=True)
+
+    print("\nDone.", flush=True)
+
+
+if __name__ == "__main__":
+    main()

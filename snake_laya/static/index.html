@@ -1,0 +1,969 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Open-One</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --border: #2a2f3a;
+    --text: #e8eaed;
+    --text-dim: #8b93a3;
+    --accent: #5aa9ff;
+    --good: #4fd97a;
+    --bad: #ff5d6c;
+    --food: #ff5d6c;
+    --head: #4fd97a;
+    --body: #2e8b52;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", -apple-system, system-ui, sans-serif;
+  }
+  .app {
+    display: flex; flex-wrap: wrap; gap: 24px;
+    padding: 24px; max-width: 1100px; margin: 0 auto;
+  }
+  .board-wrap { flex: 0 0 auto; }
+  canvas {
+    background: #12151b; border: 1px solid var(--border); border-radius: 8px;
+    display: block; max-width: 100%; height: auto;
+  }
+  .title { font-size: 20px; font-weight: 600; margin: 0 0 2px; }
+  .subtitle { color: var(--text-dim); font-size: 13px; margin: 0 0 18px; }
+  .panel {
+    flex: 1 1 280px; min-width: 260px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  .card h3 {
+    margin: 0 0 10px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text-dim); font-weight: 600;
+  }
+  .stat-row { display: flex; justify-content: space-between; align-items: baseline; margin: 6px 0; }
+  .stat-label { color: var(--text-dim); font-size: 13px; }
+  .stat-value { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stat-value.big { font-size: 26px; }
+  .latency-good { color: var(--good); }
+  .latency-mid { color: #f2c14e; }
+  .latency-bad { color: var(--bad); }
+  .status-dead { color: var(--bad); font-weight: 700; }
+  .status-alive { color: var(--good); font-weight: 700; }
+  .bar-row { margin: 8px 0; }
+  .bar-label {
+    display: flex; justify-content: space-between; font-size: 12px;
+    color: var(--text-dim); margin-bottom: 3px; font-variant-numeric: tabular-nums;
+  }
+  .bar-label .dir { color: var(--text); font-weight: 600; }
+  .bar-track { height: 8px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--accent); border-radius: 4px; transition: width .12s linear; }
+  .bar-fill.chosen { background: var(--good); }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #0b1220; border-color: var(--accent); font-weight: 600; }
+  .fps-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .fps-row label { font-size: 12px; color: var(--text-dim); }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .agent-pill {
+    display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px;
+    background: rgba(90,169,255,.15); color: var(--accent); border: 1px solid rgba(90,169,255,.35);
+    margin-bottom: 4px;
+  }
+  .banner {
+    display: none; background: rgba(255,93,108,.12); border: 1px solid rgba(255,93,108,.4);
+    color: var(--bad); border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px;
+  }
+  .banner.show { display: block; }
+  .history-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+  .history-table th {
+    text-align: left; color: var(--text-dim); font-weight: 600; font-size: 11px;
+    text-transform: uppercase; letter-spacing: .04em; padding: 4px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .history-table td {
+    padding: 5px 6px; border-bottom: 1px solid var(--panel-2);
+    font-variant-numeric: tabular-nums;
+  }
+  .history-table tbody tr:first-child td { color: var(--text); font-weight: 600; }
+  .cause-collision { color: var(--bad); }
+  .cause-starved { color: #f2c14e; }
+  .cause-won { color: var(--good); }
+
+  .tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
+  .tab {
+    background: var(--panel); color: var(--text-dim); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 16px; font-size: 13px; cursor: pointer; font-weight: 600;
+  }
+  .tab:hover { color: var(--text); border-color: var(--accent); }
+  .tab.active { background: var(--accent); color: #0b1220; border-color: var(--accent); }
+  .view { display: none; }
+  .view.active { display: flex; flex-wrap: wrap; gap: 24px; }
+
+  .quiz-source { color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .quiz-prompt {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px; font-size: 14px; line-height: 1.5; margin: 8px 0;
+    max-height: 220px; overflow-y: auto; white-space: pre-wrap;
+  }
+  .quiz-question { font-size: 14px; font-weight: 600; margin: 10px 0 4px; }
+  .quiz-option {
+    display: flex; justify-content: space-between; gap: 10px; align-items: center;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; margin: 6px 0; font-size: 13px;
+  }
+  .quiz-option .pct { font-variant-numeric: tabular-nums; color: var(--text-dim); }
+  .quiz-option.gold { border-color: var(--good); }
+  .quiz-option.chosen-wrong { border-color: var(--bad); }
+  .quiz-option.chosen-right { border-color: var(--good); background: rgba(79,217,122,.10); }
+  .quiz-tag {
+    font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    padding: 1px 6px; border-radius: 4px; margin-left: 6px;
+  }
+  .quiz-tag.gold { background: rgba(79,217,122,.18); color: var(--good); }
+  .quiz-tag.chosen { background: rgba(90,169,255,.18); color: var(--accent); }
+  .acc-grid { display: flex; gap: 10px; flex-wrap: wrap; }
+  .acc-cell { flex: 1 1 90px; text-align: center; }
+  .acc-cell .n { font-size: 20px; font-weight: 700; }
+  .acc-cell .lbl { font-size: 11px; color: var(--text-dim); text-transform: uppercase; }
+  select {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 10px; font-size: 13px;
+  }
+
+  .home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+  .game-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px; cursor: pointer; text-align: left; color: var(--text);
+    display: flex; flex-direction: column; gap: 6px; transition: border-color .12s, transform .12s;
+  }
+  .game-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .game-card .icon { font-size: 28px; line-height: 1; }
+  .game-card .name { font-size: 16px; font-weight: 700; }
+  .game-card .desc { font-size: 12.5px; color: var(--text-dim); line-height: 1.4; }
+  .game-card .live-dot {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--good); margin-right: 5px; box-shadow: 0 0 0 0 rgba(79,217,122,.5);
+    animation: pulse 1.6s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(79,217,122,.5); }
+    70% { box-shadow: 0 0 0 6px rgba(79,217,122,0); }
+    100% { box-shadow: 0 0 0 0 rgba(79,217,122,0); }
+  }
+  .back-link {
+    display: inline-block; margin-bottom: 12px; color: var(--text-dim); font-size: 13px;
+    cursor: pointer; text-decoration: none;
+  }
+  .back-link:hover { color: var(--accent); }
+
+  .maze-wrap canvas { background: #12151b; border: 1px solid var(--border); border-radius: 8px; display: block; }
+
+  .bj-table {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px; display: flex; flex-direction: column; gap: 18px; min-height: 260px;
+  }
+  .bj-row-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+  .bj-cards { display: flex; gap: 8px; flex-wrap: wrap; }
+  .bj-card {
+    width: 46px; height: 64px; border-radius: 6px; background: #f4f4f4; color: #111;
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px;
+    box-shadow: 0 2px 4px rgba(0,0,0,.3); border: 1px solid rgba(0,0,0,.1);
+  }
+  .bj-card.red { color: #c62828; }
+  .bj-card.hidden { background: repeating-linear-gradient(45deg, #2a3a5a, #2a3a5a 4px, #1e2a45 4px, #1e2a45 8px); }
+  .bj-total { font-size: 13px; color: var(--text-dim); margin-top: 6px; }
+  .bj-result {
+    font-size: 15px; font-weight: 700; padding: 6px 0; min-height: 22px;
+  }
+  .bj-result.win { color: var(--good); }
+  .bj-result.lose { color: var(--bad); }
+  .bj-result.push { color: #f2c14e; }
+</style>
+</head>
+<body>
+<div class="app" style="display:block;">
+  <div class="agent-pill" id="agentPill">connecting...</div>
+  <h1 class="title">Open-One</h1>
+  <p class="subtitle">exp7 hybrid-decision model &middot;
+    <a href="/playground" style="color:var(--accent)">open the query playground &rarr;</a></p>
+
+  <div class="view active" id="viewHome">
+    <div class="home-grid" style="width:100%;">
+      <div class="game-card" data-view="snake">
+        <div class="icon">&#128013;</div>
+        <div class="name"><span class="live-dot"></span>Snake</div>
+        <div class="desc">Out-of-domain stretch. Every tick is a 3-option text choice: describe what each
+          surviving move IS (room, direction to food), let the model pick.</div>
+      </div>
+      <div class="game-card" data-view="maze">
+        <div class="icon">&#129517;</div>
+        <div class="name"><span class="live-dot"></span>Maze Runner</div>
+        <div class="desc">Navigate to the exit through open passages. Same choice framing as Snake, simpler
+          signal: every move is either toward the goal or away from it.</div>
+      </div>
+      <div class="game-card" data-view="blackjack">
+        <div class="icon">&#127183;</div>
+        <div class="name"><span class="live-dot"></span>Blackjack</div>
+        <div class="desc">Hit or stand, scored against textbook basic strategy. Bust probability is
+          computed exactly from the cards the player can actually see.</div>
+      </div>
+      <div class="game-card" data-view="quiz">
+        <div class="icon">&#128220;</div>
+        <div class="name">Trivia (Q&amp;A, not real-time)</div>
+        <div class="desc">exp7's actual native task -- intent routing, reading comprehension, paraphrase
+          detection -- sampled from its own training corpora. One question at a time, not a live game.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="view" id="viewSnake">
+  <a class="back-link" data-back>&larr; Demos</a>
+  <div>
+    <p class="subtitle" style="margin-top:-8px;">Every tick framed as a 3-option text choice: describe what each
+      surviving move IS (room, direction to food), let the model pick. See snake_laya/README.md for why the model
+      cannot read the board directly.</p>
+    <div class="banner" id="deadBanner">Game over &mdash; press Restart</div>
+    <div class="board-wrap">
+      <canvas id="board" width="480" height="480"></canvas>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="card">
+      <h3>Live</h3>
+      <div class="stat-row">
+        <span class="stat-label">Status</span>
+        <span class="stat-value" id="status">--</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Score</span>
+        <span class="stat-value big" id="score">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Steps</span>
+        <span class="stat-value" id="steps">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Length</span>
+        <span class="stat-value" id="length">0</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Processing time</h3>
+      <div class="stat-row">
+        <span class="stat-label">Last decision</span>
+        <span class="stat-value big" id="latency">-- ms</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Rolling average</span>
+        <span class="stat-value" id="avgLatency">-- ms</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Model confidence &middot; next move</h3>
+      <div id="bars"></div>
+    </div>
+
+    <div class="card">
+      <h3>Game history <span id="historyCount" class="stat-label"></span></h3>
+      <div id="historyEmpty" class="stat-label">No games finished yet this session.</div>
+      <table class="history-table" id="historyTable" hidden>
+        <thead>
+          <tr><th>#</th><th>Score</th><th>Steps</th><th>Ended</th><th>Avg ms</th></tr>
+        </thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Controls</h3>
+      <div class="controls">
+        <button class="primary" id="restartBtn">Restart</button>
+        <button id="pauseBtn">Pause</button>
+      </div>
+      <div class="fps-row">
+        <label for="fpsSlider">Speed</label>
+        <input type="range" id="fpsSlider" min="1" max="20" step="1" value="8">
+        <span id="fpsVal" class="stat-value">8/s</span>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="view" id="viewQuiz">
+    <div style="flex: 1 1 420px; min-width: 320px;">
+      <a class="back-link" data-back>&larr; Demos</a>
+      <p class="subtitle" style="margin-top:0;">exp7 sampled fresh from its own training corpora and answering
+        with no augmentation (full text+vector, no modality dropout) -- its best-case path, same distribution
+        the checkpoint's own val_acc / zero_shot_acc were measured on.</p>
+
+      <div class="card">
+        <div class="quiz-source" id="quizSource">--</div>
+        <div class="quiz-prompt" id="quizPrompt">Waiting for the quiz loop to start&hellip;</div>
+        <div class="quiz-question" id="quizQuestion"></div>
+        <div id="quizOptions"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="card">
+        <h3>Accuracy this session</h3>
+        <div class="acc-grid" id="accGrid"></div>
+      </div>
+
+      <div class="card">
+        <h3>Processing time</h3>
+        <div class="stat-row">
+          <span class="stat-label">Last decision</span>
+          <span class="stat-value big" id="quizLatency">-- ms</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Controls</h3>
+        <div class="controls">
+          <button id="quizPauseBtn">Pause</button>
+        </div>
+        <div class="fps-row">
+          <label for="quizMode">Task</label>
+          <select id="quizMode">
+            <option value="auto">Auto-rotate (all 10)</option>
+            <option value="intent">Intent routing</option>
+            <option value="banking77">Banking77 (held-out domain)</option>
+            <option value="oos">In-scope vs. out-of-scope</option>
+            <option value="paraphrase">Paraphrase (yes/no)</option>
+            <option value="mcq_sciq">MCQ &middot; Science (sciq)</option>
+            <option value="mcq_race">MCQ &middot; Reading (race)</option>
+            <option value="mcq_hellaswag">MCQ &middot; Story completion</option>
+            <option value="mcq_commonsense">MCQ &middot; Commonsense</option>
+            <option value="mcq_openbookqa">MCQ &middot; Open-book QA</option>
+            <option value="mcq_arc">MCQ &middot; ARC (weak spot)</option>
+          </select>
+        </div>
+        <div class="fps-row">
+          <label for="dwellSlider">Pace</label>
+          <input type="range" id="dwellSlider" min="1" max="8" step="0.5" value="3">
+          <span id="dwellVal" class="stat-value">3.0s</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="view" id="viewMaze">
+    <div class="maze-wrap">
+      <a class="back-link" data-back>&larr; Demos</a>
+      <p class="subtitle" style="margin-top:-8px;">Every move is exactly one step toward the goal or one step
+        away -- a maze is a spanning tree, so there is no "room" axis the way Snake has one (every direction
+        opens onto the same rest of the maze). See snake_laya/README.md.</p>
+      <div class="banner" id="mazeDoneBanner">Reached the goal!</div>
+      <canvas id="mazeBoard" width="480" height="480"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="card">
+        <h3>Live</h3>
+        <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value" id="mazeStatus">--</span></div>
+        <div class="stat-row"><span class="stat-label">Steps</span><span class="stat-value big" id="mazeSteps">0</span></div>
+      </div>
+      <div class="card">
+        <h3>Processing time</h3>
+        <div class="stat-row"><span class="stat-label">Last decision</span><span class="stat-value big" id="mazeLatency">-- ms</span></div>
+        <div class="stat-row"><span class="stat-label">Rolling average</span><span class="stat-value" id="mazeAvgLatency">-- ms</span></div>
+      </div>
+      <div class="card">
+        <h3>Model confidence &middot; next move</h3>
+        <div id="mazeBars"></div>
+      </div>
+      <div class="card">
+        <h3>Run history <span id="mazeHistoryCount" class="stat-label"></span></h3>
+        <div id="mazeHistoryEmpty" class="stat-label">No runs finished yet this session.</div>
+        <table class="history-table" id="mazeHistoryTable" hidden>
+          <thead><tr><th>#</th><th>Result</th><th>Steps</th><th>Optimal</th><th>Avg ms</th></tr></thead>
+          <tbody id="mazeHistoryBody"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Controls</h3>
+        <div class="controls">
+          <button class="primary" id="mazeRestartBtn">New maze</button>
+          <button id="mazePauseBtn">Pause</button>
+        </div>
+        <div class="fps-row">
+          <label for="mazeFpsSlider">Speed</label>
+          <input type="range" id="mazeFpsSlider" min="1" max="15" step="1" value="4">
+          <span id="mazeFpsVal" class="stat-value">4/s</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="view" id="viewBlackjack">
+    <div style="flex: 1 1 420px; min-width: 320px;">
+      <a class="back-link" data-back>&larr; Demos</a>
+      <p class="subtitle" style="margin-top:-8px;">Hit/stand only (no double or split). Bust probability is
+        counted exactly from every card the player cannot see -- the remaining shoe plus the dealer's hidden
+        hole card. Basic-strategy match is scored for diagnostics only, never shown to the model.</p>
+
+      <div class="bj-table">
+        <div>
+          <div class="bj-row-label">Dealer</div>
+          <div class="bj-cards" id="bjDealerCards"></div>
+          <div class="bj-total" id="bjDealerTotal"></div>
+        </div>
+        <div>
+          <div class="bj-row-label">Player</div>
+          <div class="bj-cards" id="bjPlayerCards"></div>
+          <div class="bj-total" id="bjPlayerTotal"></div>
+        </div>
+        <div class="bj-result" id="bjResult"></div>
+        <div id="bjOptions"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="card">
+        <h3>Session</h3>
+        <div class="stat-row"><span class="stat-label">Rounds played</span><span class="stat-value" id="bjRounds">0</span></div>
+        <div class="stat-row"><span class="stat-label">Rounds won</span><span class="stat-value" id="bjWon">0</span></div>
+        <div class="stat-row"><span class="stat-label">Matches basic strategy</span><span class="stat-value" id="bjStrategyPct">--</span></div>
+      </div>
+      <div class="card">
+        <h3>Processing time</h3>
+        <div class="stat-row"><span class="stat-label">Last decision</span><span class="stat-value big" id="bjLatency">-- ms</span></div>
+      </div>
+      <div class="card">
+        <h3>Round history <span id="bjHistoryCount" class="stat-label"></span></h3>
+        <div id="bjHistoryEmpty" class="stat-label">No rounds finished yet this session.</div>
+        <table class="history-table" id="bjHistoryTable" hidden>
+          <thead><tr><th>#</th><th>Result</th><th>Player</th><th>Dealer</th></tr></thead>
+          <tbody id="bjHistoryBody"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Controls</h3>
+        <div class="controls"><button id="bjPauseBtn">Pause</button></div>
+        <div class="fps-row">
+          <label for="bjDwellSlider">Pace</label>
+          <input type="range" id="bjDwellSlider" min="0.5" max="5" step="0.5" value="1.5">
+          <span id="bjDwellVal" class="stat-value">1.5s</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DIRS = ["UP", "DOWN", "LEFT", "RIGHT"];
+const barsEl = document.getElementById("bars");
+DIRS.forEach(d => {
+  const row = document.createElement("div");
+  row.className = "bar-row";
+  row.innerHTML = `
+    <div class="bar-label"><span class="dir">${d}</span><span id="pct-${d}">0%</span></div>
+    <div class="bar-track"><div class="bar-fill" id="bar-${d}" style="width:0%"></div></div>`;
+  barsEl.appendChild(row);
+});
+
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+let lastGeneration = -1;
+
+function draw(state) {
+  const { width, height } = state.board;
+  const cell = canvas.width / width;
+  ctx.fillStyle = "#12151b";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = "#20242e";
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= width; x++) {
+    ctx.beginPath(); ctx.moveTo(x * cell, 0); ctx.lineTo(x * cell, canvas.height); ctx.stroke();
+  }
+  for (let y = 0; y <= height; y++) {
+    ctx.beginPath(); ctx.moveTo(0, y * cell); ctx.lineTo(canvas.width, y * cell); ctx.stroke();
+  }
+
+  if (state.food) {
+    const [fx, fy] = state.food;
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--food");
+    roundRect(fx * cell + 2, fy * cell + 2, cell - 4, cell - 4, 4);
+  }
+
+  (state.snake || []).forEach(([x, y], i) => {
+    ctx.fillStyle = i === 0
+      ? getComputedStyle(document.documentElement).getPropertyValue("--head")
+      : getComputedStyle(document.documentElement).getPropertyValue("--body");
+    roundRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2, 3);
+  });
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function latencyClass(ms) {
+  if (ms == null) return "";
+  if (ms < 80) return "latency-good";
+  if (ms < 200) return "latency-mid";
+  return "latency-bad";
+}
+
+function render(state) {
+  draw(state);
+  document.getElementById("agentPill").textContent = state.agent_label;
+  document.getElementById("status").textContent = state.alive ? "Playing" : "Game over";
+  document.getElementById("status").className = "stat-value " + (state.alive ? "status-alive" : "status-dead");
+  document.getElementById("deadBanner").className = "banner" + (state.alive ? "" : " show");
+  document.getElementById("score").textContent = state.score;
+  document.getElementById("steps").textContent = state.steps;
+  document.getElementById("length").textContent = (state.snake || []).length;
+
+  const lat = document.getElementById("latency");
+  lat.textContent = state.latency_ms != null ? state.latency_ms.toFixed(1) + " ms" : "-- ms";
+  lat.className = "stat-value big " + latencyClass(state.latency_ms);
+
+  document.getElementById("avgLatency").textContent =
+    state.avg_latency_ms != null ? state.avg_latency_ms.toFixed(1) + " ms" : "-- ms";
+
+  const probs = state.probs || {};
+  DIRS.forEach(d => {
+    const p = probs[d] || 0;
+    document.getElementById(`bar-${d}`).style.width = (p * 100).toFixed(1) + "%";
+    document.getElementById(`bar-${d}`).className = "bar-fill" + (state.chosen === d ? " chosen" : "");
+    document.getElementById(`pct-${d}`).textContent = (p * 100).toFixed(0) + "%";
+  });
+
+  renderHistory(state.history || []);
+}
+
+let lastHistoryLen = -1;
+function renderHistory(history) {
+  // Rows are appended, not mutated, and the same game never appears twice
+  // (server-side dedup, see server.py:_record_result) -- so a length check
+  // is enough to skip re-rendering on every 100ms poll when nothing changed.
+  if (history.length === lastHistoryLen) return;
+  lastHistoryLen = history.length;
+
+  document.getElementById("historyCount").textContent = history.length ? `(${history.length})` : "";
+  document.getElementById("historyEmpty").hidden = history.length > 0;
+  document.getElementById("historyTable").hidden = history.length === 0;
+
+  const body = document.getElementById("historyBody");
+  body.innerHTML = history.map((g, i) => `
+    <tr>
+      <td>${history.length - i}</td>
+      <td>${g.score}</td>
+      <td>${g.steps}</td>
+      <td class="cause-${g.cause}">${g.cause}</td>
+      <td>${g.avg_latency_ms != null ? g.avg_latency_ms.toFixed(0) : "--"}</td>
+    </tr>`).join("");
+}
+
+async function poll() {
+  try {
+    const res = await fetch("/api/state");
+    const state = await res.json();
+    render(state);
+  } catch (e) {
+    document.getElementById("agentPill").textContent = "disconnected";
+  }
+  setTimeout(poll, 100);
+}
+poll();
+
+document.getElementById("restartBtn").addEventListener("click", () => {
+  fetch("/api/control", { method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ restart: true, paused: false }) });
+  document.getElementById("pauseBtn").textContent = "Pause";
+});
+
+let paused = false;
+document.getElementById("pauseBtn").addEventListener("click", () => {
+  paused = !paused;
+  fetch("/api/control", { method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ paused }) });
+  document.getElementById("pauseBtn").textContent = paused ? "Resume" : "Pause";
+});
+
+const fpsSlider = document.getElementById("fpsSlider");
+fpsSlider.addEventListener("input", () => {
+  document.getElementById("fpsVal").textContent = fpsSlider.value + "/s";
+  fetch("/api/control", { method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ fps: Number(fpsSlider.value) }) });
+});
+
+// ---------------------------------------------------------------------
+// Launcher -- every game's loop runs server-side regardless of which view
+// is showing (see server.py's main(): Snake/Maze/Blackjack/Quiz threads
+// all start together). Clicking a card only changes which one this page
+// polls and renders, so returning to a game shows it mid-stream rather
+// than restarted.
+// ---------------------------------------------------------------------
+const views = {
+  home: document.getElementById("viewHome"), snake: document.getElementById("viewSnake"),
+  maze: document.getElementById("viewMaze"), blackjack: document.getElementById("viewBlackjack"),
+  quiz: document.getElementById("viewQuiz"),
+};
+let activeView = "home";
+function setView(name) {
+  activeView = name;
+  Object.entries(views).forEach(([k, el]) => el.classList.toggle("active", k === name));
+}
+document.querySelectorAll(".game-card").forEach(card => {
+  card.addEventListener("click", () => setView(card.dataset.view));
+});
+document.querySelectorAll("[data-back]").forEach(link => {
+  link.addEventListener("click", () => setView("home"));
+});
+
+// ---------------------------------------------------------------------
+// Quiz view
+// ---------------------------------------------------------------------
+const QUIZ_LABELS = {
+  intent: "Intent routing", banking77: "Banking77 (held-out)", oos: "In/out-of-scope",
+  paraphrase: "Paraphrase", mcq_sciq: "MCQ: Science", mcq_race: "MCQ: Reading",
+  mcq_hellaswag: "MCQ: Story completion", mcq_commonsense: "MCQ: Commonsense",
+  mcq_openbookqa: "MCQ: Open-book QA", mcq_arc: "MCQ: ARC (weak spot)",
+};
+let lastQuizTick = -1;
+
+function renderQuiz(q) {
+  if (!q.ready) {
+    document.getElementById("quizPrompt").textContent = "Loading the checkpoint… the quiz starts once Snake's loop finishes loading it (same model, shared, see quiz_agent.py).";
+    return;
+  }
+  if (q.tick === lastQuizTick) return;  // nothing new since the last poll
+  lastQuizTick = q.tick;
+
+  document.getElementById("quizSource").textContent =
+    `${QUIZ_LABELS[q.qtype] || q.qtype} · source: ${q.source}`;
+  document.getElementById("quizPrompt").textContent = q.prompt || "";
+  document.getElementById("quizQuestion").textContent = q.question || "";
+
+  const box = document.getElementById("quizOptions");
+  box.innerHTML = (q.options || []).map((opt, i) => {
+    const isGold = i === q.gold_idx, isChosen = i === q.chosen_idx;
+    let cls = "quiz-option";
+    if (isChosen) cls += isGold ? " chosen-right" : " chosen-wrong";
+    else if (isGold) cls += " gold";
+    const tags = (isGold ? '<span class="quiz-tag gold">correct</span>' : "")
+               + (isChosen ? '<span class="quiz-tag chosen">picked</span>' : "");
+    const pct = ((q.probs[i] || 0) * 100).toFixed(0);
+    return `<div class="${cls}"><span>${opt}${tags}</span><span class="pct">${pct}%</span></div>`;
+  }).join("");
+
+  document.getElementById("quizLatency").textContent =
+    q.latency_ms != null ? q.latency_ms.toFixed(0) + " ms" : "-- ms";
+
+  const accGrid = document.getElementById("accGrid");
+  accGrid.innerHTML = Object.entries(q.stats || {}).map(([k, s]) => {
+    const pct = s.n ? ((100 * s.correct / s.n).toFixed(0) + "%") : "--";
+    return `<div class="acc-cell"><div class="n">${pct}</div><div class="lbl">${QUIZ_LABELS[k] || k} (${s.n})</div></div>`;
+  }).join("");
+}
+
+async function pollQuiz() {
+  try {
+    const res = await fetch("/api/quiz_state");
+    renderQuiz(await res.json());
+  } catch (e) { /* quiz thread not up yet -- keep trying */ }
+  setTimeout(pollQuiz, 500);
+}
+pollQuiz();
+
+let quizPaused = false;
+document.getElementById("quizPauseBtn").addEventListener("click", () => {
+  quizPaused = !quizPaused;
+  fetch("/api/quiz_control", { method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ paused: quizPaused }) });
+  document.getElementById("quizPauseBtn").textContent = quizPaused ? "Resume" : "Pause";
+});
+
+document.getElementById("quizMode").addEventListener("change", (e) => {
+  fetch("/api/quiz_control", { method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ mode: e.target.value }) });
+});
+
+const dwellSlider = document.getElementById("dwellSlider");
+dwellSlider.addEventListener("input", () => {
+  document.getElementById("dwellVal").textContent = Number(dwellSlider.value).toFixed(1) + "s";
+  fetch("/api/quiz_control", { method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ dwell: Number(dwellSlider.value) }) });
+});
+
+// ---------------------------------------------------------------------
+// Maze Runner
+// ---------------------------------------------------------------------
+const mazeCanvas = document.getElementById("mazeBoard");
+const mazeCtx = mazeCanvas.getContext("2d");
+let mazeLastGeneration = -1;
+
+function drawMaze(m) {
+  const { width, height } = m;
+  if (!width || !height) return;
+  const cell = mazeCanvas.width / width;
+  mazeCtx.fillStyle = "#12151b";
+  mazeCtx.fillRect(0, 0, mazeCanvas.width, mazeCanvas.height);
+
+  // An edge NOT in m.passages is a wall -- draw every possible adjacent
+  // pair as a wall, then erase (skip) the ones that are actually open.
+  const open = new Set((m.passages || []).map(([a, b]) => {
+    const k1 = a[0] + "," + a[1], k2 = b[0] + "," + b[1];
+    return k1 < k2 ? k1 + "|" + k2 : k2 + "|" + k1;
+  }));
+  const isOpen = (x1, y1, x2, y2) => {
+    const k1 = x1 + "," + y1, k2 = x2 + "," + y2;
+    return open.has(k1 < k2 ? k1 + "|" + k2 : k2 + "|" + k1);
+  };
+
+  mazeCtx.strokeStyle = "#3a4152";
+  mazeCtx.lineWidth = 2;
+  mazeCtx.beginPath();
+  for (let x = 0; x < width; x++) {
+    for (let y = 0; y < height; y++) {
+      const px = x * cell, py = y * cell;
+      if (x + 1 < width && !isOpen(x, y, x + 1, y)) {
+        mazeCtx.moveTo(px + cell, py); mazeCtx.lineTo(px + cell, py + cell);
+      }
+      if (y + 1 < height && !isOpen(x, y, x, y + 1)) {
+        mazeCtx.moveTo(px, py + cell); mazeCtx.lineTo(px + cell, py + cell);
+      }
+    }
+  }
+  // outer border
+  mazeCtx.moveTo(0, 0); mazeCtx.lineTo(width * cell, 0);
+  mazeCtx.lineTo(width * cell, height * cell); mazeCtx.lineTo(0, height * cell); mazeCtx.closePath();
+  mazeCtx.stroke();
+
+  // trail
+  if (m.path && m.path.length > 1) {
+    mazeCtx.strokeStyle = "rgba(90,169,255,.5)";
+    mazeCtx.lineWidth = Math.max(2, cell * 0.15);
+    mazeCtx.beginPath();
+    m.path.forEach(([x, y], i) => {
+      const cx = x * cell + cell / 2, cy = y * cell + cell / 2;
+      if (i === 0) mazeCtx.moveTo(cx, cy); else mazeCtx.lineTo(cx, cy);
+    });
+    mazeCtx.stroke();
+  }
+
+  // goal
+  if (m.goal) {
+    const [gx, gy] = m.goal;
+    mazeCtx.fillStyle = "#4fd97a";
+    mazeCtx.beginPath();
+    mazeCtx.arc(gx * cell + cell / 2, gy * cell + cell / 2, cell * 0.28, 0, Math.PI * 2);
+    mazeCtx.fill();
+  }
+  // agent
+  if (m.pos) {
+    const [ax, ay] = m.pos;
+    mazeCtx.fillStyle = "#5aa9ff";
+    mazeCtx.beginPath();
+    mazeCtx.arc(ax * cell + cell / 2, ay * cell + cell / 2, cell * 0.3, 0, Math.PI * 2);
+    mazeCtx.fill();
+  }
+}
+
+function renderMaze(m) {
+  drawMaze(m);
+  document.getElementById("mazeStatus").textContent = !m.ready ? "loading..." : (m.alive ? "Running" : (m.won ? "Solved!" : "Timed out"));
+  document.getElementById("mazeDoneBanner").className = "banner" + (m.alive === false && m.won ? " show" : "");
+  document.getElementById("mazeSteps").textContent = m.steps || 0;
+  const lat = document.getElementById("mazeLatency");
+  lat.textContent = m.latency_ms != null ? m.latency_ms.toFixed(1) + " ms" : "-- ms";
+  lat.className = "stat-value big " + latencyClass(m.latency_ms);
+  document.getElementById("mazeAvgLatency").textContent = m.avg_latency_ms != null ? m.avg_latency_ms.toFixed(1) + " ms" : "-- ms";
+
+  const bars = document.getElementById("mazeBars");
+  const probs = m.probs || {};
+  bars.innerHTML = DIRS.map(d => {
+    const p = probs[d] || 0;
+    const cls = m.chosen === d ? "bar-fill chosen" : "bar-fill";
+    return `<div class="bar-row"><div class="bar-label"><span class="dir">${d}</span><span>${(p*100).toFixed(0)}%</span></div>
+      <div class="bar-track"><div class="${cls}" style="width:${(p*100).toFixed(1)}%"></div></div></div>`;
+  }).join("");
+
+  const hist = m.history || [];
+  if (hist.length !== mazeLastGeneration) {
+    mazeLastGeneration = hist.length;
+    document.getElementById("mazeHistoryCount").textContent = hist.length ? `(${hist.length})` : "";
+    document.getElementById("mazeHistoryEmpty").hidden = hist.length > 0;
+    document.getElementById("mazeHistoryTable").hidden = hist.length === 0;
+    document.getElementById("mazeHistoryBody").innerHTML = hist.map((g, i) => `
+      <tr><td>${hist.length - i}</td><td class="${g.won ? 'cause-won' : 'cause-collision'}">${g.won ? 'solved' : 'timed out'}</td>
+      <td>${g.steps}</td><td>${g.optimal_steps ?? '--'}</td><td>${g.avg_latency_ms != null ? g.avg_latency_ms.toFixed(0) : '--'}</td></tr>`).join("");
+  }
+}
+
+async function pollMaze() {
+  try {
+    const res = await fetch("/api/maze_state");
+    renderMaze(await res.json());
+  } catch (e) { /* not up yet */ }
+  setTimeout(pollMaze, 150);
+}
+pollMaze();
+
+document.getElementById("mazeRestartBtn").addEventListener("click", () => {
+  fetch("/api/maze_control", { method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ restart: true, paused: false }) });
+});
+let mazePaused = false;
+document.getElementById("mazePauseBtn").addEventListener("click", () => {
+  mazePaused = !mazePaused;
+  fetch("/api/maze_control", { method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ paused: mazePaused }) });
+  document.getElementById("mazePauseBtn").textContent = mazePaused ? "Resume" : "Pause";
+});
+const mazeFpsSlider = document.getElementById("mazeFpsSlider");
+mazeFpsSlider.addEventListener("input", () => {
+  document.getElementById("mazeFpsVal").textContent = mazeFpsSlider.value + "/s";
+  fetch("/api/maze_control", { method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ fps: Number(mazeFpsSlider.value) }) });
+});
+
+// ---------------------------------------------------------------------
+// Blackjack
+// ---------------------------------------------------------------------
+function cardLabel(c) {
+  if (!c) return null;
+  const [rank, suit] = c;
+  const symbol = { S: "♠", H: "♥", D: "♦", C: "♣" }[suit] || suit;
+  return { text: `${rank}${symbol}`, red: suit === "H" || suit === "D" };
+}
+
+function renderCards(elId, cards) {
+  const el = document.getElementById(elId);
+  el.innerHTML = (cards || []).map(c => {
+    if (!c) return `<div class="bj-card hidden"></div>`;
+    const { text, red } = cardLabel(c);
+    return `<div class="bj-card${red ? " red" : ""}">${text}</div>`;
+  }).join("");
+}
+
+let bjLastTick = -1;
+const BJ_RESULT_LABEL = {
+  player_bust: "Bust -- dealer wins", dealer_bust: "Dealer busts -- you win!",
+  player_win: "You win!", dealer_win: "Dealer wins", push: "Push (tie)",
+  player_blackjack: "Blackjack! You win!",
+};
+function renderBlackjack(b) {
+  if (!b.ready) {
+    document.getElementById("bjResult").textContent = "Loading the checkpoint…";
+    return;
+  }
+  renderCards("bjDealerCards", b.dealer);
+  renderCards("bjPlayerCards", b.player);
+
+  const playerTotal = (b.player || []).length ? handTotal(b.player) : null;
+  const dealerCards = (b.dealer || []).filter(c => c);
+  const dealerTotal = dealerCards.length === (b.dealer || []).length && dealerCards.length ? handTotal(dealerCards) : null;
+  document.getElementById("bjPlayerTotal").textContent = playerTotal != null ? `Total: ${playerTotal}` : "";
+  document.getElementById("bjDealerTotal").textContent = dealerTotal != null ? `Total: ${dealerTotal}` : (dealerCards.length ? "Total: ?" : "");
+
+  const resultEl = document.getElementById("bjResult");
+  if (b.phase === "done" && b.result) {
+    resultEl.textContent = BJ_RESULT_LABEL[b.result] || b.result;
+    resultEl.className = "bj-result " + (
+      ["dealer_bust", "player_win", "player_blackjack"].includes(b.result) ? "win" :
+      b.result === "push" ? "push" : "lose");
+  } else {
+    resultEl.textContent = "";
+    resultEl.className = "bj-result";
+  }
+
+  const optsEl = document.getElementById("bjOptions");
+  const probs = b.probs || {};
+  if (b.phase === "player_turn" || (b.chosen && Object.keys(probs).length)) {
+    optsEl.innerHTML = ["hit", "stand"].filter(a => a in probs).map(a => {
+      const p = probs[a] || 0;
+      const isChosen = b.chosen === a;
+      const tag = isChosen ? `<span class="quiz-tag chosen">picked</span>` : "";
+      return `<div class="quiz-option${isChosen ? " chosen-right" : ""}"><span>${a}${tag}</span><span class="pct">${(p*100).toFixed(0)}%</span></div>`;
+    }).join("");
+  } else {
+    optsEl.innerHTML = "";
+  }
+
+  document.getElementById("bjLatency").textContent = b.latency_ms != null ? b.latency_ms.toFixed(0) + " ms" : "-- ms";
+  document.getElementById("bjRounds").textContent = b.rounds_played || 0;
+  document.getElementById("bjWon").textContent = b.rounds_won || 0;
+  const decisions = b.strategy_decisions || 0;
+  document.getElementById("bjStrategyPct").textContent = decisions
+    ? `${((100 * (b.strategy_matches || 0) / decisions)).toFixed(0)}% (${decisions})` : "--";
+
+  const hist = b.history || [];
+  if (hist.length !== bjLastTick) {
+    bjLastTick = hist.length;
+    document.getElementById("bjHistoryCount").textContent = hist.length ? `(${hist.length})` : "";
+    document.getElementById("bjHistoryEmpty").hidden = hist.length > 0;
+    document.getElementById("bjHistoryTable").hidden = hist.length === 0;
+    document.getElementById("bjHistoryBody").innerHTML = hist.map((r, i) => `
+      <tr><td>${hist.length - i}</td><td class="${["dealer_bust","player_win","player_blackjack"].includes(r.result) ? "cause-won" : (r.result === "push" ? "" : "cause-collision")}">${BJ_RESULT_LABEL[r.result] || r.result}</td>
+      <td>${r.player_total}</td><td>${r.dealer_total}</td></tr>`).join("");
+  }
+}
+
+// Local ace-aware hand total, mirroring blackjack_env.hand_value -- needed
+// because the server sends raw (rank, suit) pairs, not a precomputed total
+// (deliberately: the total is derived data, computing it in one place --
+// blackjack_env.py -- and again here for display is a redundancy that's
+// only safe because it's simple and covered by this comment, not because
+// duplicated logic is generally fine).
+function handTotal(cards) {
+  let total = 0, aces = 0;
+  for (const [rank] of cards) {
+    if (rank === "A") { total += 11; aces += 1; }
+    else if (["J", "Q", "K"].includes(rank)) total += 10;
+    else total += Number(rank);
+  }
+  while (total > 21 && aces > 0) { total -= 10; aces -= 1; }
+  return total;
+}
+
+async function pollBlackjack() {
+  try {
+    const res = await fetch("/api/blackjack_state");
+    renderBlackjack(await res.json());
+  } catch (e) { /* not up yet */ }
+  setTimeout(pollBlackjack, 300);
+}
+pollBlackjack();
+
+let bjPaused = false;
+document.getElementById("bjPauseBtn").addEventListener("click", () => {
+  bjPaused = !bjPaused;
+  fetch("/api/blackjack_control", { method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ paused: bjPaused }) });
+  document.getElementById("bjPauseBtn").textContent = bjPaused ? "Resume" : "Pause";
+});
+const bjDwellSlider = document.getElementById("bjDwellSlider");
+bjDwellSlider.addEventListener("input", () => {
+  document.getElementById("bjDwellVal").textContent = Number(bjDwellSlider.value).toFixed(1) + "s";
+  fetch("/api/blackjack_control", { method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ dwell: Number(bjDwellSlider.value) }) });
+});
+</script>
+</body>
+</html>
