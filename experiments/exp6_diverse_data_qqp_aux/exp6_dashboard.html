@@ -1,0 +1,174 @@
+<h2 class="sr-only">Live training dashboard for experiment 6: Qwen2.5-0.5B on diverse data with QQP paraphrase and MCQ answer-selection auxiliary objectives, tracking validation accuracy, zero-shot accuracy on never-trained intents, QQP paraphrase accuracy, MCQ answer-selection accuracy, GPU usage, and estimated time remaining, auto-refreshing every 15 seconds</h2>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+  <p style="font-size: 13px; color: var(--text-muted); margin: 0;" id="updated-label">Loading...</p>
+  <button id="refresh-btn" style="display: flex; align-items: center; gap: 6px; width: auto; padding: 6px 14px;">
+    <i class="ti ti-refresh" style="font-size: 16px;" aria-hidden="true"></i>
+    <span id="refresh-label">Refresh</span>
+  </button>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px;">
+  <div style="background: var(--surface-1); border-radius: var(--radius); padding: 1rem;">
+    <p style="font-size: 13px; color: var(--text-secondary); margin: 0 0 4px;">Status</p>
+    <p style="font-size: 18px; font-weight: 500; margin: 0; color: var(--text-accent);" id="stat-status">-</p>
+  </div>
+  <div style="background: var(--surface-1); border-radius: var(--radius); padding: 1rem;">
+    <p style="font-size: 13px; color: var(--text-secondary); margin: 0 0 4px;">Est. time remaining</p>
+    <p style="font-size: 18px; font-weight: 500; margin: 0;" id="stat-eta">-</p>
+  </div>
+  <div style="background: var(--surface-1); border-radius: var(--radius); padding: 1rem;">
+    <p style="font-size: 13px; color: var(--text-secondary); margin: 0 0 4px;">GPU memory</p>
+    <p style="font-size: 18px; font-weight: 500; margin: 0;" id="stat-gpu-mem">-</p>
+  </div>
+  <div style="background: var(--surface-1); border-radius: var(--radius); padding: 1rem;">
+    <p style="font-size: 13px; color: var(--text-secondary); margin: 0 0 4px;">GPU utilization</p>
+    <p style="font-size: 18px; font-weight: 500; margin: 0;" id="stat-gpu-util">-</p>
+  </div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 1.25rem;">
+  <div style="background: var(--surface-1); border-radius: var(--radius); padding: 1rem;">
+    <p style="font-size: 13px; color: var(--text-secondary); margin: 0 0 4px;">Val accuracy</p>
+    <p style="font-size: 20px; font-weight: 500; margin: 0;" id="stat-val">-</p>
+  </div>
+  <div style="background: var(--surface-1); border-radius: var(--radius); padding: 1rem;">
+    <p style="font-size: 13px; color: var(--text-secondary); margin: 0 0 4px;">Zero-shot accuracy</p>
+    <p style="font-size: 20px; font-weight: 500; margin: 0;" id="stat-zs">-</p>
+  </div>
+  <div style="background: var(--surface-1); border-radius: var(--radius); padding: 1rem;">
+    <p style="font-size: 13px; color: var(--text-secondary); margin: 0 0 4px;">QQP val accuracy</p>
+    <p style="font-size: 20px; font-weight: 500; margin: 0;" id="stat-qqp">-</p>
+  </div>
+  <div style="background: var(--surface-1); border-radius: var(--radius); padding: 1rem;">
+    <p style="font-size: 13px; color: var(--text-secondary); margin: 0 0 4px;">MCQ accuracy <span id="stat-mcq-baseline" style="font-weight:400;"></span></p>
+    <p style="font-size: 20px; font-weight: 500; margin: 0;" id="stat-mcq">-</p>
+  </div>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 8px; font-size: 12px; color: var(--text-secondary);">
+  <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 10px; height: 2px; background: #2a78d6; display: inline-block;"></span>Val accuracy (seen intents)</span>
+  <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 10px; height: 2px; background: #eb6834; display: inline-block;"></span>Zero-shot accuracy (never trained)</span>
+  <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 10px; height: 2px; background: #1baf7a; display: inline-block;"></span>QQP val accuracy (paraphrase pairs)</span>
+  <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 10px; height: 2px; background: #8b5cf6; display: inline-block;"></span>MCQ accuracy (answer selection, actual target task)</span>
+</div>
+<div style="position: relative; width: 100%; height: 280px;">
+  <canvas id="chart" role="img" aria-label="Line chart of val accuracy, zero-shot accuracy, QQP val accuracy, and MCQ answer-selection accuracy per epoch, auto-refreshed from live training data">Chart showing training progress per epoch, auto-refreshed from live training data.</canvas>
+</div>
+<p style="font-size: 12px; color: var(--text-muted); margin-top: 8px;" id="footer-note">Qwen2.5-0.5B, fully unfrozen, 300 intents / 5 sources, QQP + MCQ auxiliary objectives, running on Colab A100. Auto-refreshes every 15s; click refresh for an immediate pull.</p>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+let chart = null;
+let dbNamespace = null;
+
+function fmtPct(v) {
+  return (v == null) ? '-' : Math.round(v * 1000) / 10 + '%';
+}
+
+function fmtMinutes(mins) {
+  if (mins == null) return '-';
+  if (mins < 1) return '<1 min';
+  if (mins < 60) return Math.round(mins) + ' min';
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  return h + 'h ' + m + 'm';
+}
+
+function render(doc) {
+  const epochs = (doc && doc.epochs) || [];
+  const status = (doc && doc.status) || 'not started';
+  const labels = epochs.map(e => 'Epoch ' + e.epoch);
+  const valData = epochs.map(e => e.val_acc);
+  const zsData = epochs.map(e => e.zero_shot_acc);
+  const qqpData = epochs.map(e => e.qqp_val_acc);
+  const mcqData = epochs.map(e => (e.mcq_val_acc == null ? null : e.mcq_val_acc));
+
+  const last = epochs.length ? epochs[epochs.length - 1] : null;
+  document.getElementById('stat-status').textContent = status;
+  document.getElementById('stat-val').textContent = fmtPct(last ? last.val_acc : null);
+  document.getElementById('stat-zs').textContent = fmtPct(last ? last.zero_shot_acc : null);
+  document.getElementById('stat-qqp').textContent = fmtPct(last ? last.qqp_val_acc : null);
+  document.getElementById('stat-mcq').textContent = fmtPct(last && last.mcq_val_acc != null ? last.mcq_val_acc : null);
+
+  const baseline = doc && doc.mcqBaseline;
+  document.getElementById('stat-mcq-baseline').textContent = baseline
+    ? '(baseline ' + fmtPct(baseline) + ')' : '';
+
+  const gpu = doc && doc.gpu;
+  if (gpu) {
+    document.getElementById('stat-gpu-mem').textContent =
+      Math.round(gpu.memory_used_mib / 1024 * 10) / 10 + ' / ' + Math.round(gpu.memory_total_mib / 1024) + ' GB';
+    document.getElementById('stat-gpu-util').textContent = Math.round(gpu.utilization_pct) + '%';
+  } else {
+    document.getElementById('stat-gpu-mem').textContent = '-';
+    document.getElementById('stat-gpu-util').textContent = '-';
+  }
+
+  const eta = doc && doc.eta;
+  document.getElementById('stat-eta').textContent = eta ? fmtMinutes(eta.minutes_remaining) : '-';
+
+  document.getElementById('updated-label').textContent = doc && doc.updated_at
+    ? 'Last updated ' + new Date(doc.updated_at).toLocaleTimeString()
+    : 'No data yet';
+
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById('chart'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'Val accuracy', data: valData, borderColor: '#2a78d6', backgroundColor: 'rgba(42,120,214,0.1)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#2a78d6', tension: 0.15, fill: false },
+        { label: 'Zero-shot accuracy', data: zsData, borderColor: '#eb6834', backgroundColor: 'rgba(235,104,52,0.1)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#eb6834', tension: 0.15, fill: false },
+        { label: 'QQP val accuracy', data: qqpData, borderColor: '#1baf7a', backgroundColor: 'rgba(27,175,122,0.1)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#1baf7a', tension: 0.15, fill: false },
+        { label: 'MCQ accuracy', data: mcqData, borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.1)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#8b5cf6', tension: 0.15, fill: false, spanGaps: true }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { min: 0, max: 1, ticks: { callback: (v) => Math.round(v * 100) + '%', color: '#898781' }, grid: { color: '#e1e0d9' } },
+        x: { ticks: { color: '#898781', autoSkip: false, maxRotation: 45 }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+async function pull() {
+  if (!dbNamespace) return;
+  try {
+    const snap = await dbNamespace.doc('progress/exp6').get();
+    render(snap.exists ? snap.data() : null);
+  } catch (e) {}
+}
+
+async function loadOnce() {
+  try {
+    dbNamespace = await claude.use('db');
+  } catch (e) {
+    dbNamespace = null;
+  }
+  if (!dbNamespace) {
+    render(null);
+    document.getElementById('updated-label').textContent = 'Live data unavailable in this view';
+    document.getElementById('refresh-btn').disabled = true;
+    return;
+  }
+  await pull();
+  setInterval(pull, 15000);
+}
+
+async function refresh() {
+  const label = document.getElementById('refresh-label');
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true;
+  label.textContent = 'Refreshing...';
+  if (!dbNamespace) {
+    try { dbNamespace = await claude.use('db'); } catch (e) { dbNamespace = null; }
+  }
+  await pull();
+  label.textContent = 'Refresh';
+  btn.disabled = false;
+}
+
+document.getElementById('refresh-btn').addEventListener('click', refresh);
+render(null);
+loadOnce();
+</script>

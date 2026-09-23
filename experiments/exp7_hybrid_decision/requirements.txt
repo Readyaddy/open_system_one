@@ -1,0 +1,9 @@
+# exp7 environment. Pin transformers >= 4.48 for ModernBERT support and the
+# `inputs_embeds` behavior model.py's vector-injection mechanism relies on
+# (verified directly against the installed source in this project's own
+# dev environment -- see model.py's docstring for the exact mechanism).
+transformers>=4.48
+torch>=2.3
+datasets>=2.19
+bitsandbytes>=0.43   # 8-bit AdamW; GPU-only, harmless if unused on CPU
+wandb>=0.17

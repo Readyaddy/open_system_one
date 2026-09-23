@@ -1,0 +1,31 @@
+Loading weights:   0%|          | 0/170 [00:00<?, ?it/s]Loading weights: 100%|##########| 170/170 [00:00<00:00, 5288.81it/s]
+[1mModernBertModel LOAD REPORT[0m from: answerdotai/ModernBERT-large
+Key               | Status     |  | 
+------------------+------------+--+-
+head.dense.weight | UNEXPECTED |  | 
+decoder.bias      | UNEXPECTED |  | 
+head.norm.weight  | UNEXPECTED |  | 
+
+[3mNotes:
+- UNEXPECTED[3m	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.[0m
+[laya_agent] loaded ../checkpoints/exp7_latest.pt (epoch 7, val_acc 0.6733333333333333, zero_shot_acc 0.6533333333333333, trained k_max=1, using k=1)
+=== heading-echo bias check (food fixed at (2,2), heading varies) ===
+  facing=UP     chosen=LEFT   probs={'UP': 0.29, 'DOWN': 0.0, 'LEFT': 0.58, 'RIGHT': 0.12}
+  facing=DOWN   chosen=LEFT   probs={'UP': 0.0, 'DOWN': 0.25, 'LEFT': 0.6, 'RIGHT': 0.15}
+  facing=LEFT   chosen=LEFT   probs={'UP': 0.27, 'DOWN': 0.27, 'LEFT': 0.46, 'RIGHT': 0.0}
+  facing=RIGHT  chosen=UP     probs={'UP': 0.55, 'DOWN': 0.38, 'LEFT': 0.0, 'RIGHT': 0.07}
+=== wall-crash repro: heading RIGHT into wall ===
+chosen: Direction.UP {'UP': 0.666, 'DOWN': 0.298, 'LEFT': 0.0, 'RIGHT': 0.036}
+=== survival stats over 10 games, step cap 400 ===
+  seed=0 final_length=34 steps=400 alive=True
+  seed=1 final_length=29 steps=400 alive=True
+  seed=2 final_length=33 steps=400 alive=True
+  seed=3 final_length=30 steps=400 alive=True
+  seed=4 final_length=29 steps=400 alive=True
+  seed=5 final_length=32 steps=400 alive=True
+  seed=6 final_length=31 steps=400 alive=True
+  seed=7 final_length=30 steps=400 alive=True
+  seed=8 final_length=32 steps=400 alive=True
+  seed=9 final_length=30 steps=400 alive=True
+avg final length: 31.0
+avg steps survived: 400.0

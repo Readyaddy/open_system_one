@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Open-One query playground</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel-2: #1e222b; --border: #2a2f3a;
+    --text: #e8eaed; --text-dim: #8b93a3; --accent: #5aa9ff; --good: #4fd97a;
+    --bad: #ff5d6c; --mask: #f2c14e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
+  .topbar { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  a { color: var(--accent); text-decoration: none; font-size: 13px; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  .subtitle { color: var(--text-dim); font-size: 13px; margin: 0 0 20px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+  .card h3 { margin: 0 0 10px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
+  label { display: block; font-size: 12px; color: var(--text-dim); margin: 10px 0 4px; }
+  textarea, input[type=text] {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 8px 10px; font-size: 13px; font-family: inherit; resize: vertical;
+  }
+  textarea { min-height: 90px; }
+  .option-row { display: flex; gap: 8px; margin-bottom: 6px; }
+  .option-row input { flex: 1; }
+  .option-row button { flex: 0 0 auto; }
+  button {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #0b1220; border-color: var(--accent); font-weight: 600; }
+  button.small { padding: 5px 10px; font-size: 12px; }
+  .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .error { color: var(--bad); font-size: 13px; margin-top: 10px; display: none; }
+  .error.show { display: block; }
+  .token-strip { display: flex; flex-wrap: wrap; gap: 3px; font-family: Consolas, monospace; font-size: 12px; line-height: 1.6; }
+  .tok { padding: 2px 5px; border-radius: 4px; background: var(--panel-2); border: 1px solid var(--border); white-space: pre; }
+  .tok.ctx { background: rgba(90,169,255,.15); border-color: rgba(90,169,255,.4); }
+  .tok.mask { background: rgba(242,193,78,.25); border-color: var(--mask); font-weight: 700; }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--text-dim); margin-bottom: 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .stat-row { display: flex; gap: 24px; font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
+  .stat-row b { color: var(--text); }
+  .bar-row { margin: 10px 0; }
+  .bar-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+  .bar-label .opt { color: var(--text); max-width: 640px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { height: 14px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--accent); }
+  .bar-fill.top { background: var(--good); }
+  #results { display: none; }
+  .split { display: flex; gap: 16px; flex-wrap: wrap; }
+  .split > .card { flex: 1 1 320px; margin-bottom: 0; }
+  #boardCanvas {
+    background: #12151b; border: 1px solid var(--border); border-radius: 8px;
+    display: block; max-width: 100%; height: auto; margin: 0 auto;
+  }
+  .board-caption { text-align: center; font-size: 12px; color: var(--text-dim); margin-top: 8px; }
+  .field-row { display: flex; gap: 10px; }
+  .field-row > div { flex: 1; }
+  .hint { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>Query playground</h1>
+    <a href="/">&larr; back to live game</a>
+  </div>
+  <p class="subtitle">Edit the exact context / instructions / options sent to exp7, and see the real packed sequence + [MASK] placement + model output.</p>
+
+  <div class="split">
+    <div class="card">
+      <h3>Build a board (optional)</h3>
+      <div class="field-row">
+        <div><label>Width</label><input type="text" id="gWidth" value="20"></div>
+        <div><label>Height</label><input type="text" id="gHeight" value="20"></div>
+      </div>
+      <label>Snake body, head first: "x,y; x,y; x,y"</label>
+      <input type="text" id="gSnake" value="10,10; 9,10; 8,10">
+      <div class="field-row">
+        <div>
+          <label>Food (x,y)</label>
+          <input type="text" id="gFood" value="15,3">
+        </div>
+        <div>
+          <label>Heading</label>
+          <select id="gDirection" style="width:100%; background:var(--panel-2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:8px;">
+            <option>UP</option><option selected>RIGHT</option><option>DOWN</option><option>LEFT</option>
+          </select>
+        </div>
+      </div>
+      <div class="hint">Builds the context/instructions/options the SAME way the real game does (SnakeGame.describe() + the live templated rendering), from a state you specify by hand.</div>
+      <div class="actions">
+        <button id="buildState">Build query from this state</button>
+        <button id="loadLive">Load current live board instead</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Board preview</h3>
+      <canvas id="boardCanvas" width="320" height="320"></canvas>
+      <div class="board-caption" id="boardCaption">no board loaded yet</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Request sent to the model</h3>
+    <label>Context</label>
+    <textarea id="context" placeholder="e.g. Snake game on a 20x20 grid..."></textarea>
+    <label>Instructions</label>
+    <input type="text" id="instructions" placeholder="e.g. Which of the following applies here?">
+    <label>Options (each becomes one [MASK] slot, in this order)</label>
+    <div id="options"></div>
+    <div class="actions">
+      <button class="small" id="addOption">+ add option</button>
+      <button class="primary" id="runBtn">Run query</button>
+    </div>
+    <div class="error" id="errorBox"></div>
+  </div>
+
+  <div id="results">
+    <div class="card">
+      <h3>Packed sequence (exactly what model.py builds)</h3>
+      <div class="stat-row">
+        <span>Sequence length: <b id="seqLen">--</b></span>
+        <span>Mask tokens: <b id="numMasks">--</b></span>
+      </div>
+      <div class="legend">
+        <span><span class="swatch" style="background:rgba(90,169,255,.4)"></span> context span</span>
+        <span><span class="swatch" style="background:var(--mask)"></span> [MASK] (one per option, in order)</span>
+        <span><span class="swatch" style="background:#1e222b;border:1px solid #2a2f3a"></span> instructions / structural tokens</span>
+      </div>
+      <div class="token-strip" id="tokenStrip"></div>
+    </div>
+
+    <div class="card">
+      <h3>Model output</h3>
+      <div id="bars"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const optionsDiv = document.getElementById("options");
+
+function addOptionRow(value) {
+  const row = document.createElement("div");
+  row.className = "option-row";
+  row.innerHTML = `<input type="text" value="${value ? value.replace(/"/g, '&quot;') : ''}" placeholder="option text">
+                    <button class="small remove">remove</button>`;
+  row.querySelector(".remove").addEventListener("click", () => row.remove());
+  optionsDiv.appendChild(row);
+}
+
+for (let i = 0; i < 3; i++) addOptionRow("");
+
+document.getElementById("addOption").addEventListener("click", () => addOptionRow(""));
+
+function getOptions() {
+  return [...optionsDiv.querySelectorAll("input")].map(i => i.value).filter(v => v.trim());
+}
+
+function fillRequestFromResponse(data) {
+  document.getElementById("context").value = data.context;
+  document.getElementById("instructions").value = data.instructions;
+  optionsDiv.innerHTML = "";
+  data.options.forEach(o => addOptionRow(o));
+  if (data.board) drawBoard(data.board, data.snake, data.food, data.direction);
+  if (data.mode && data.mode !== "model") {
+    showError(`This tick is "${data.mode}" -- the rules engine left nothing to choose `
+      + `(${data.mode === "forced" ? "exactly one survivable move" : "no survivable move"}), `
+      + `so the model isn't consulted and there are no options to run. Try a different tick, `
+      + `or edit the board builder above to create a real choice.`);
+  } else {
+    clearError();
+  }
+}
+
+document.getElementById("loadLive").addEventListener("click", async () => {
+  clearError();
+  const res = await fetch("/api/live_context");
+  const data = await res.json();
+  if (data.error) { showError(data.error); return; }
+  fillRequestFromResponse(data);
+});
+
+document.getElementById("buildState").addEventListener("click", async () => {
+  clearError();
+  const width = parseInt(document.getElementById("gWidth").value, 10);
+  const height = parseInt(document.getElementById("gHeight").value, 10);
+  const snake = document.getElementById("gSnake").value.split(";")
+    .map(s => s.trim()).filter(Boolean)
+    .map(s => s.split(",").map(n => parseInt(n.trim(), 10)));
+  const foodParts = document.getElementById("gFood").value.split(",").map(s => parseInt(s.trim(), 10));
+  const direction = document.getElementById("gDirection").value;
+
+  if (snake.some(p => p.length !== 2 || p.some(Number.isNaN))) {
+    showError('Snake body must look like "10,10; 9,10; 8,10"'); return;
+  }
+  if (foodParts.length !== 2 || foodParts.some(Number.isNaN)) {
+    showError('Food must look like "15,3"'); return;
+  }
+
+  const res = await fetch("/api/state_to_query", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ width, height, snake, food: foodParts, direction })
+  });
+  const data = await res.json();
+  if (data.error) { showError(data.error); return; }
+  fillRequestFromResponse(data);
+});
+
+function drawBoard(board, snake, food, direction) {
+  const canvas = document.getElementById("boardCanvas");
+  const ctx = canvas.getContext("2d");
+  const cell = canvas.width / board.width;
+  ctx.fillStyle = "#12151b";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = "#20242e";
+  for (let x = 0; x <= board.width; x++) { ctx.beginPath(); ctx.moveTo(x*cell,0); ctx.lineTo(x*cell,canvas.height); ctx.stroke(); }
+  for (let y = 0; y <= board.height; y++) { ctx.beginPath(); ctx.moveTo(0,y*cell); ctx.lineTo(canvas.width,y*cell); ctx.stroke(); }
+
+  if (food) {
+    ctx.fillStyle = "#ff5d6c";
+    roundRect(ctx, food[0]*cell+2, food[1]*cell+2, cell-4, cell-4, 4);
+  }
+  (snake || []).forEach(([x,y], i) => {
+    ctx.fillStyle = i === 0 ? "#4fd97a" : "#2e8b52";
+    roundRect(ctx, x*cell+1, y*cell+1, cell-2, cell-2, 3);
+  });
+
+  document.getElementById("boardCaption").textContent =
+    `${board.width}x${board.height} grid · head at (${snake[0][0]}, ${snake[0][1]}) facing ${direction} · food at ${food ? `(${food[0]}, ${food[1]})` : 'none'}`;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); ctx.fill();
+}
+
+function showError(msg) {
+  const box = document.getElementById("errorBox");
+  box.textContent = msg;
+  box.className = "error show";
+}
+function clearError() {
+  document.getElementById("errorBox").className = "error";
+}
+
+document.getElementById("runBtn").addEventListener("click", async () => {
+  clearError();
+  const context = document.getElementById("context").value;
+  const instructions = document.getElementById("instructions").value;
+  const options = getOptions();
+  if (options.length < 1) { showError("Add at least one option."); return; }
+
+  const res = await fetch("/api/inspect", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ context, instructions, options })
+  });
+  const data = await res.json();
+  if (data.error) { showError(data.error); document.getElementById("results").style.display = "none"; return; }
+  render(data);
+});
+
+function render(data) {
+  document.getElementById("results").style.display = "block";
+  document.getElementById("seqLen").textContent = data.sequence_length;
+  document.getElementById("numMasks").textContent = data.num_mask_tokens;
+
+  const strip = document.getElementById("tokenStrip");
+  strip.innerHTML = "";
+  data.tokens.forEach(t => {
+    const el = document.createElement("span");
+    el.className = "tok" + (t.is_mask ? " mask" : (t.is_context ? " ctx" : ""));
+    let label = t.token.replace(/^Ġ/, " ").replace(/^##/, "");
+    el.textContent = t.is_mask ? `[MASK:${t.option_index}]` : label;
+    el.title = `position ${t.idx}`;
+    strip.appendChild(el);
+  });
+
+  const barsEl = document.getElementById("bars");
+  barsEl.innerHTML = "";
+  data.options.forEach((opt, i) => {
+    const p = data.probs[i];
+    const row = document.createElement("div");
+    row.className = "bar-row";
+    row.innerHTML = `
+      <div class="bar-label"><span class="opt">[${i}] ${opt}</span><span>${(p*100).toFixed(1)}%</span></div>
+      <div class="bar-track"><div class="bar-fill${i === data.top_index ? ' top' : ''}" style="width:${(p*100).toFixed(1)}%"></div></div>`;
+    barsEl.appendChild(row);
+  });
+}
+</script>
+</body>
+</html>

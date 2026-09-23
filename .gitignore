@@ -1,0 +1,28 @@
+# Checkpoints and models (exceeds 100MB GitHub limit)
+*.pt
+*.pth
+*.bin
+*.safetensors
+checkpoints/
+
+# Python & Environment
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+env/
+venv/
+*.egg-info/
+
+# Logs and system files
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Large Datasets / Corpora
+data/intent_corpus/
+data/mcq_corpus/
+data/bool_corpus/
+data/score_corpus/
+data/diversity_corpus/
