@@ -67,8 +67,8 @@ Option texts encoded independently              Build packed sequence:
 * **Backbone**: `answerdotai/ModernBERT-large` (24 layers, $d=1024$, 395M parameters, RoPE positional encoding, unpadded attention, 8192 context window).
 * **Vector Injection**: Projects untruncated 1024-d option embeddings directly into `[MASK_i]` token positions at Layer 0.
 * **Recurrent Latent Depth ($k=1 \dots 6$)**: Transformer Decision Head loops over option states with **Gated $s_0$ Residual Anchors** (`LayerNorm(s + s0_gate * s0)`) and LayerNorm skip-connections to prevent representation drift across iterations.
-* **Adaptive Halting (`halt_head`)**: A lightweight 2-layer MLP inspecting confidence metrics (top prob, top-2 margin, entropy, cardinality) at each depth step. Early exits at $k=1$ for clear inputs, achieving **83.3% compute savings (6x speedup)**.
-* **Split-Conformal Escalation (`escalate_head`)**: Calibrated threshold ($\tau = 0.3308$) providing a **distribution-free mathematical guarantee that $\ge 90\%$ of incorrect halted predictions get flagged** for System-2 / human escalation.
+* **Adaptive Halting (`halt_head`)**: A lightweight 2-layer MLP inspecting confidence metrics (top prob, top-2 margin, entropy, cardinality) at each depth step. Early exits at $k=1$ for clear inputs, saving **83.3% of decision-head recurrent loops** (~10% overall inference latency savings).
+* **Split-Conformal Escalation (`escalate_head`)**: Calibrated threshold ($\tau = 0.3352$) providing a **distribution-free mathematical guarantee that $\ge 90\%$ of incorrect halted predictions get flagged** for System-2 / human escalation.
 
 ---
 
@@ -96,11 +96,11 @@ Empirically evaluated on standard public benchmarks (12,215 test items) against 
 | Parameter | Value |
 | :--- | :--- |
 | **Total Model Parameters** | **448.48 Million** |
-| **Backbone Parameters** | 394.78 Million |
-| **Decision Head Parameters** | 53.70 Million |
+| **Backbone Parameters** | 394.78 Million (88.0%) |
+| **Decision Head Parameters** | 53.70 Million (12.0%) |
 | **Halting Network (`HaltingHeads`)** | **794 parameters** (~0.0008M) |
-| **Compute Savings with Halting** | **83.3% Saved** (6x speedup at $k=1$) |
-| **Escalation Coverage Guarantee** | **$\ge 90\%$ Error Coverage** ($\alpha = 0.10, \tau = 0.3308$) |
+| **Decision-Head Recurrent Loop Savings** | **83.3% Saved** at $k=1$ (~10% overall latency reduction) |
+| **Escalation Coverage Guarantee** | **$\ge 90\%$ Error Coverage** ($\alpha = 0.10, \tau = 0.3352$) |
 
 ---
 
