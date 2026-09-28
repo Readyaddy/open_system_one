@@ -1,0 +1,519 @@
+[
+  {
+    "source": "bool/boolq",
+    "n_val": 1000,
+    "chance": 0.5,
+    "label_dist_train": {
+      "0": 1820,
+      "1": 1820
+    },
+    "majority": 0.5,
+    "question_only": 0.59,
+    "context_only": 0.615,
+    "FLAGS": [
+      "question_only",
+      "context_only"
+    ],
+    "question_only_top_features": [
+      "place(-> 0)",
+      "same as(-> 0)",
+      "all(-> 0)",
+      "be season(-> 0)",
+      "today(-> 0)",
+      "die(-> 0)",
+      "peter(-> 1)",
+      "can(-> 1)",
+      "has anyone(-> 1)",
+      "possible to(-> 1)",
+      "get(-> 1)",
+      "for(-> 1)"
+    ],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "bool/mnli",
+    "n_val": 1000,
+    "chance": 0.5,
+    "label_dist_train": {
+      "1": 8448,
+      "0": 8448
+    },
+    "majority": 0.5,
+    "question_only": 0.586,
+    "context_only": 0.467,
+    "FLAGS": [
+      "question_only"
+    ],
+    "question_only_top_features": [
+      "no(-> 0)",
+      "never(-> 0)",
+      "are no(-> 0)",
+      "only(-> 0)",
+      "any(-> 0)",
+      "all(-> 0)",
+      "that(-> 1)",
+      "some(-> 1)",
+      "asked(-> 1)",
+      "era(-> 1)",
+      "by(-> 1)",
+      "main(-> 1)"
+    ],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "bool/paws",
+    "n_val": 1000,
+    "chance": 0.5,
+    "label_dist_train": {
+      "1": 8000,
+      "0": 8000
+    },
+    "majority": 0.5,
+    "question_only": 0.523,
+    "context_only": 0.521,
+    "FLAGS": [],
+    "question_only_top_features": [
+      "in(-> 0)",
+      "his(-> 0)",
+      "published(-> 0)",
+      "after the(-> 0)",
+      "the river(-> 0)",
+      "and is(-> 0)",
+      "or(-> 1)",
+      "the family(-> 1)",
+      "members(-> 1)",
+      "including(-> 1)",
+      "branch(-> 1)",
+      "also known(-> 1)"
+    ],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "bool/qqp",
+    "n_val": 1000,
+    "chance": 0.5,
+    "label_dist_train": {
+      "1": 5703,
+      "0": 5703
+    },
+    "majority": 0.5,
+    "question_only": 0.665,
+    "context_only": 0.668,
+    "FLAGS": [
+      "question_only",
+      "context_only"
+    ],
+    "question_only_top_features": [
+      "com(-> 0)",
+      "in(-> 0)",
+      "of(-> 0)",
+      "into(-> 0)",
+      "or(-> 0)",
+      "with(-> 0)",
+      "quora(-> 1)",
+      "money online(-> 1)",
+      "notes(-> 1)",
+      "1000(-> 1)",
+      "universe(-> 1)",
+      "trump(-> 1)"
+    ],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "score/amazon_stars",
+    "n_val": 1000,
+    "chance": 0.2,
+    "level_dist_train": {
+      "0": 2500,
+      "1": 2500,
+      "2": 2500,
+      "3": 2500,
+      "4": 2500
+    },
+    "answer_position_dist_train": {
+      "0": 2580,
+      "1": 2502,
+      "2": 2500,
+      "3": 2498,
+      "4": 2420
+    },
+    "reversed_frac": 0.299,
+    "majority": 0.2,
+    "position_only": 0.195,
+    "length_only": 0.244,
+    "question_only": 0.194,
+    "len_level_corr": -0.066,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "score/sst5",
+    "n_val": 695,
+    "chance": 0.2,
+    "level_dist_train": {
+      "0": 1090,
+      "1": 1090,
+      "2": 1090,
+      "3": 1090,
+      "4": 1090
+    },
+    "answer_position_dist_train": {
+      "0": 1106,
+      "1": 1122,
+      "2": 1090,
+      "3": 1058,
+      "4": 1074
+    },
+    "reversed_frac": 0.303,
+    "majority": 0.2,
+    "position_only": 0.2014,
+    "length_only": 0.2331,
+    "question_only": 0.1827,
+    "len_level_corr": 0.016,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "score/stsb",
+    "n_val": 800,
+    "chance": 0.2,
+    "level_dist_train": {
+      "0": 724,
+      "1": 724,
+      "2": 724,
+      "3": 724,
+      "4": 724
+    },
+    "answer_position_dist_train": {
+      "0": 706,
+      "1": 735,
+      "2": 724,
+      "3": 713,
+      "4": 742
+    },
+    "reversed_frac": 0.3,
+    "majority": 0.2,
+    "position_only": 0.1837,
+    "length_only": 0.2188,
+    "question_only": 0.2412,
+    "len_level_corr": 0.21,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "score/yelp_stars",
+    "n_val": 1000,
+    "chance": 0.2,
+    "level_dist_train": {
+      "0": 2500,
+      "1": 2500,
+      "2": 2500,
+      "3": 2500,
+      "4": 2500
+    },
+    "answer_position_dist_train": {
+      "0": 2520,
+      "1": 2531,
+      "2": 2500,
+      "3": 2469,
+      "4": 2480
+    },
+    "reversed_frac": 0.301,
+    "majority": 0.2,
+    "position_only": 0.186,
+    "length_only": 0.25,
+    "question_only": 0.234,
+    "len_level_corr": -0.154,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "diversity/20_newsgroups",
+    "n_val": 1000,
+    "chance": 0.05,
+    "n_labels": 20,
+    "imbalance_train": 1.44,
+    "majority": 0.05,
+    "length_only": 0.089,
+    "keyword_match": 0.164,
+    "keyword_coverage": 0.369,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "diversity/dbpedia14",
+    "n_val": 994,
+    "chance": 0.0714,
+    "n_labels": 14,
+    "imbalance_train": 1.48,
+    "majority": 0.0714,
+    "length_only": 0.1076,
+    "keyword_match": 0.3119,
+    "keyword_coverage": 0.395,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "diversity/goemotions",
+    "n_val": 271,
+    "chance": 0.0357,
+    "n_labels": 28,
+    "imbalance_train": 10.26,
+    "majority": 0.0369,
+    "length_only": 0.048,
+    "keyword_match": 0.0369,
+    "keyword_coverage": 0.048,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "diversity/trec_coarse",
+    "n_val": 84,
+    "chance": 0.1667,
+    "n_labels": 6,
+    "imbalance_train": 5.71,
+    "majority": 0.1667,
+    "length_only": 0.2024,
+    "keyword_match": 0.0357,
+    "keyword_coverage": 0.036,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "diversity/trec_fine",
+    "n_val": 312,
+    "chance": 0.0286,
+    "n_labels": 35,
+    "imbalance_train": 18.75,
+    "majority": 0.0321,
+    "length_only": 0.0545,
+    "keyword_match": 0.0321,
+    "keyword_coverage": 0.067,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "diversity/tweet_hate",
+    "n_val": 852,
+    "chance": 0.5,
+    "n_labels": 2,
+    "imbalance_train": 1.0,
+    "majority": 0.5,
+    "length_only": 0.5305,
+    "keyword_match": 0.0,
+    "keyword_coverage": 0.0,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "diversity/tweet_irony",
+    "n_val": 908,
+    "chance": 0.5,
+    "n_labels": 2,
+    "imbalance_train": 1.0,
+    "majority": 0.5,
+    "length_only": 0.4868,
+    "keyword_match": 0.0,
+    "keyword_coverage": 0.0,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "diversity/tweet_offensive",
+    "n_val": 914,
+    "chance": 0.5,
+    "n_labels": 2,
+    "imbalance_train": 1.0,
+    "majority": 0.5,
+    "length_only": 0.5547,
+    "keyword_match": 0.0,
+    "keyword_coverage": 0.0,
+    "FLAGS": [
+      "length_only"
+    ],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "diversity/tweet_sentiment",
+    "n_val": 936,
+    "chance": 0.3333,
+    "n_labels": 3,
+    "imbalance_train": 1.0,
+    "majority": 0.3333,
+    "length_only": 0.3729,
+    "keyword_match": 0.0,
+    "keyword_coverage": 0.0,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "diversity/tweet_stance_abortion",
+    "n_val": 36,
+    "chance": 0.3333,
+    "n_labels": 3,
+    "imbalance_train": 2.93,
+    "majority": 0.3333,
+    "length_only": 0.3333,
+    "keyword_match": 0.0,
+    "keyword_coverage": 0.194,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "diversity/tweet_stance_atheism",
+    "n_val": 29,
+    "chance": 0.3333,
+    "n_labels": 3,
+    "imbalance_train": 3.29,
+    "majority": 0.3448,
+    "length_only": 0.3793,
+    "keyword_match": 0.0,
+    "keyword_coverage": 0.034,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "diversity/tweet_stance_climate",
+    "n_val": 22,
+    "chance": 0.3333,
+    "n_labels": 3,
+    "imbalance_train": 14.62,
+    "majority": 0.4545,
+    "length_only": 0.5455,
+    "keyword_match": 0.0,
+    "keyword_coverage": 0.227,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "diversity/tweet_stance_feminist",
+    "n_val": 39,
+    "chance": 0.3333,
+    "n_labels": 3,
+    "imbalance_train": 2.61,
+    "majority": 0.3333,
+    "length_only": 0.2821,
+    "keyword_match": 0.0256,
+    "keyword_coverage": 0.154,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "diversity/tweet_stance_hillary",
+    "n_val": 36,
+    "chance": 0.3333,
+    "n_labels": 3,
+    "imbalance_train": 3.34,
+    "majority": 0.3333,
+    "length_only": 0.3889,
+    "keyword_match": 0.0,
+    "keyword_coverage": 0.194,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  },
+  {
+    "source": "diversity/yahoo_answers",
+    "n_val": 1000,
+    "chance": 0.1,
+    "n_labels": 10,
+    "imbalance_train": 1.52,
+    "majority": 0.1,
+    "length_only": 0.109,
+    "keyword_match": 0.04,
+    "keyword_coverage": 0.072,
+    "FLAGS": [],
+    "leakage": {
+      "train&val": 0,
+      "train&test": 0,
+      "val&test": 0
+    }
+  }
+]

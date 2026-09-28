@@ -121,7 +121,8 @@ class PackedSequenceBuilder:
     state -- a plain tokenizer wrapper, safe to share across processes."""
 
     def __init__(self, tokenizer, budget_total: int = 2048, l_max_per_option: int = 64,
-                 l_instructions: int = 96, l_context: int = 768):
+                 l_instructions: int = 96, l_context: int = 768, pad_multiple: int = 1):
+        self.pad_multiple = pad_multiple
         self.tok = tokenizer
         self.budget_total = budget_total
         self.l_max_per_option = l_max_per_option
@@ -179,6 +180,13 @@ class PackedSequenceBuilder:
     def build_batch(self, examples: List[PackedExample], device) -> PackedBatch:
         built = [self.build_one(ex) for ex in examples]
         max_len = max(len(ids) for ids, _, _ in built)
+        # Round up to a multiple of pad_multiple. With token-budget batching
+        # every batch had a unique length, so the CUDA caching allocator could
+        # rarely reuse a freed block and kept reserving new ones -- on Windows
+        # that growth pages silently into system RAM instead of failing.
+        # Fewer distinct shapes -> more block reuse.
+        if self.pad_multiple > 1:
+            max_len = -(-max_len // self.pad_multiple) * self.pad_multiple
         max_n = max(len(mp) for _, mp, _ in built)
         pad_id = self.tok.pad_token_id
 
@@ -231,6 +239,138 @@ class Projector(nn.Module):
 
     def forward(self, x):
         return self.net(x)
+
+
+def load_flexible(model, state_dict):
+    """Load a checkpoint into a model whose head may have grown since.
+
+    Plain load_state_dict(strict=False) tolerates missing/unexpected keys but
+    still RAISES on a shape mismatch, so resizing context_codes (16 -> 128)
+    would crash on load. Handled here:
+      * context_codes with a different count: the trained codes are tiled to
+        fill the new size. Copies 2..n get small noise -- identical codes
+        produce identical attention outputs and identical gradients, so
+        without noise the copies would never diverge. The original codes are
+        kept exact, so the first m slots are precisely the trained summary.
+      * any other shape mismatch: dropped and reported, never silently kept.
+      * newly added modules: initialized from trained weights via
+        model.init_new_from_pretrained.
+    Returns (missing, unexpected, notes).
+    """
+    sd = dict(state_dict)
+    own = model.state_dict()
+    notes = []
+
+    k = "context_codes"
+    if k in sd and k in own and sd[k].shape != own[k].shape and sd[k].shape[1] == own[k].shape[1]:
+        old = sd.pop(k).to(own[k].dtype)
+        m_old, m_new = old.shape[0], own[k].shape[0]
+        reps = math.ceil(m_new / m_old)
+        tiled = old.repeat(reps, 1)[:m_new].clone()
+        noise = torch.randn_like(tiled) * old.std() * 0.1
+        noise[:m_old] = 0
+        with torch.no_grad():
+            model.context_codes.copy_(tiled + noise)
+        notes.append(f"context_codes: tiled {m_old} trained codes -> {m_new} (originals exact, copies +10% noise)")
+
+    for key in list(sd):
+        if key in own and sd[key].shape != own[key].shape:
+            notes.append(f"DROPPED {key}: checkpoint {tuple(sd[key].shape)} vs model {tuple(own[key].shape)}")
+            sd.pop(key)
+
+    missing, unexpected = model.load_state_dict(sd, strict=False)
+    missing = [m for m in missing if m != "context_codes"]
+    notes += model.init_new_from_pretrained(missing)
+    return missing, unexpected, notes
+
+
+class DepthLoRALinear(nn.Linear):
+    """nn.Linear plus one low-rank delta per recurrent depth.
+
+    The recurrent block shares its weights across every pass, so the only
+    things telling pass 1 from pass 6 were an additive depth embedding and
+    FiLM. This gives each pass its own rank-r correction to the FFN, which is
+    where most of a transformer layer's per-token transformation happens --
+    the "relaxed recursion" idea (Bae et al. 2024, layer-wise LoRA on a
+    shared block): the base weights stay shared, each depth gets a cheap
+    private adjustment. At rank 16 over 6 depths this is ~1M params per FFN
+    matrix pair, against the 33.6M the shared block already has.
+
+    Subclasses nn.Linear on purpose so `weight`/`bias` keep their names and
+    existing checkpoints load unchanged -- only lora_A/lora_B are new keys.
+    lora_B starts at zero, so every depth is exactly the pretrained layer
+    until training moves it.
+    """
+
+    def __init__(self, in_features, out_features, bias=True, n_depths=6, rank=16):
+        super().__init__(in_features, out_features, bias=bias)
+        self.rank = rank
+        self.lora_A = nn.Parameter(torch.empty(n_depths, rank, in_features))
+        self.lora_B = nn.Parameter(torch.zeros(n_depths, out_features, rank))
+        nn.init.normal_(self.lora_A, std=in_features ** -0.5)
+        self.depth = 0
+
+    @classmethod
+    def from_linear(cls, lin: nn.Linear, n_depths, rank):
+        new = cls(lin.in_features, lin.out_features, bias=lin.bias is not None,
+                  n_depths=n_depths, rank=rank)
+        with torch.no_grad():
+            new.weight.copy_(lin.weight)
+            if lin.bias is not None:
+                new.bias.copy_(lin.bias)
+        return new
+
+    def forward(self, x):
+        y = F.linear(x, self.weight, self.bias)
+        d = min(self.depth, self.lora_A.size(0) - 1)
+        return y + F.linear(F.linear(x, self.lora_A[d]), self.lora_B[d])
+
+
+class AttentiveScorer(nn.Module):
+    """Multi-head attention before the per-option scoring MLP.
+
+    The old scorer was an MLP applied to each option slot independently, so at
+    classification time an option never looked at the other options or at the
+    evidence -- it could only be scored in isolation. For ProofWriter that is
+    exactly the wrong shape: "True", "False" and "Unknown" are only meaningful
+    relative to each other, and the deciding facts sit thousands of tokens
+    away in the context.
+
+    Each block does two pre-norm residual sublayers:
+      1. option <-> option self-attention  (options compare)
+      2. option -> evidence cross-attention (options re-read the context and
+         the loop's scratchpad thoughts at full resolution)
+
+    Output projections start at zero, so a freshly added scorer is exactly the
+    old MLP-only scorer until trained. The q/k/v projections are copied from
+    the trained recurrent block (see HybridDecisionModel.init_new_from_pretrained)
+    rather than starting random.
+    """
+
+    def __init__(self, dim, n_heads, n_blocks=1, dropout=0.1):
+        super().__init__()
+        self.blocks = nn.ModuleList()
+        for _ in range(n_blocks):
+            blk = nn.ModuleDict({
+                "norm_self": nn.LayerNorm(dim),
+                "self_attn": nn.MultiheadAttention(dim, n_heads, dropout=dropout, batch_first=True),
+                "norm_cross": nn.LayerNorm(dim),
+                "cross_attn": nn.MultiheadAttention(dim, n_heads, dropout=dropout, batch_first=True),
+            })
+            for a in ("self_attn", "cross_attn"):
+                nn.init.zeros_(blk[a].out_proj.weight)
+                nn.init.zeros_(blk[a].out_proj.bias)
+            self.blocks.append(blk)
+
+    def forward(self, opt, opt_pad, mem, mem_pad):
+        for blk in self.blocks:
+            h = blk["norm_self"](opt)
+            a, _ = blk["self_attn"](h, h, h, key_padding_mask=opt_pad, need_weights=False)
+            opt = opt + a
+            h = blk["norm_cross"](opt)
+            a, _ = blk["cross_attn"](h, mem, mem, key_padding_mask=mem_pad, need_weights=False)
+            opt = opt + a
+        return opt
 
 
 class RecurrentDecisionBlock(nn.Module):
@@ -294,7 +434,9 @@ class HybridDecisionModel(nn.Module):
     def __init__(self, backbone: str = BACKBONE, mask_token_id: int = None,
                  n_context_codes: int = 16, k_max: int = 6, head_n_layers: int = 2,
                  maxsim_dim: int = 128, dropout: float = 0.1, use_maxsim: bool = False,
-                 gradient_checkpointing: bool = True, backbone_override: nn.Module = None):
+                 gradient_checkpointing: bool = True, backbone_override: nn.Module = None,
+                 n_scratch: int = 0, use_film_depth: bool = False,
+                 depth_lora_rank: int = 0, n_scorer_blocks: int = 0):
         super().__init__()
         if mask_token_id is None:
             raise ValueError("mask_token_id is required -- pass tokenizer.mask_token_id.")
@@ -351,6 +493,65 @@ class HybridDecisionModel(nn.Module):
         # same rationale as inject_gate's small init.
         self.depth_embed = nn.Embedding(k_max, hidden)
         nn.init.normal_(self.depth_embed.weight, std=0.02)
+
+        # --- per-depth FiLM modulation (use_film_depth) ---
+        # depth_embed can only SHIFT the loop's input by a fixed vector. With
+        # weights shared across every pass, that's the only thing making pass 6
+        # differ from pass 1 -- one additive offset against a 1024-dim state.
+        # A per-depth scale as well as a shift lets each pass apply a genuinely
+        # different transformation, which is what actually breaks the
+        # shared-weight symmetry that makes the loop contract to a fixed point.
+        # Initialized scale=1 / shift=0, so switching this on is an exact no-op
+        # until trained and existing checkpoints keep their behavior.
+        self.use_film_depth = use_film_depth
+        if use_film_depth:
+            self.depth_scale = nn.Embedding(k_max, hidden)
+            self.depth_shift = nn.Embedding(k_max, hidden)
+            nn.init.ones_(self.depth_scale.weight)
+            nn.init.zeros_(self.depth_shift.weight)
+
+        # --- thought scratchpad (n_scratch > 0) ---
+        # The loop's real gap: `s` is the ONLY thing carried between passes, so
+        # pass 5 has no addressable record of what pass 2 concluded -- the outer
+        # residual accumulates prior passes into one summed state, but nothing
+        # can be attended to individually. Chain-of-thought works precisely
+        # because step 3 can re-read steps 1-2.
+        # Each pass now writes n_scratch latent vectors describing what it just
+        # concluded; later passes cross-attend over [H ; all prior thoughts], so
+        # the raw evidence AND the loop's own reasoning trace are both readable.
+        # scratch_pos marks which pass a thought came from, so "what I thought
+        # first" and "what I thought last" aren't interchangeable.
+        self.n_scratch = n_scratch
+        if n_scratch > 0:
+            self.scratch_proj = nn.Sequential(
+                nn.LayerNorm(hidden), nn.Linear(hidden, n_scratch * hidden),
+            )
+            self.scratch_pos = nn.Embedding(k_max, hidden)
+            nn.init.normal_(self.scratch_pos.weight, std=0.02)
+            # Small but NOT zero. This gate multiplies scratch_proj's output, so
+            # at exactly 0 the projection receives precisely zero gradient
+            # (d(th)/d(proj) = gate = 0) and can never start learning -- the gate
+            # itself only gets ~1e-4, so the bootstrap would take longer than any
+            # run here. Verified empirically before changing it: at 0.0 all four
+            # scratch_proj tensors sit at grad_sum == 0.0 after a full backward.
+            # 0.1 keeps the initial perturbation small while letting both the
+            # gate and the projection train from step one.
+            self.scratch_gate = nn.Parameter(torch.tensor(0.1))
+
+        # --- per-depth LoRA on the shared recurrent FFN (depth_lora_rank > 0) ---
+        self.depth_lora_rank = depth_lora_rank
+        self._lora_modules = []
+        if depth_lora_rank > 0:
+            for layer in self.recurrent_block.layers:
+                layer.linear1 = DepthLoRALinear.from_linear(layer.linear1, k_max, depth_lora_rank)
+                layer.linear2 = DepthLoRALinear.from_linear(layer.linear2, k_max, depth_lora_rank)
+                self._lora_modules += [layer.linear1, layer.linear2]
+
+        # --- attention before scoring (n_scorer_blocks > 0) ---
+        self.n_scorer_blocks = n_scorer_blocks
+        if n_scorer_blocks > 0:
+            self.attn_scorer = AttentiveScorer(hidden, _safe_n_heads(hidden), n_scorer_blocks, dropout)
+
         self.scorer = nn.Sequential(
             nn.LayerNorm(hidden), nn.Linear(hidden, hidden), nn.GELU(),
             nn.Dropout(dropout), nn.Linear(hidden, 1),
@@ -513,10 +714,11 @@ class HybridDecisionModel(nn.Module):
         key_padding_mask = ~context_token_mask  # True = ignore
         # Guard against an example with an empty context span (would make
         # every key masked, which MultiheadAttention would turn into NaNs).
-        empty_row = key_padding_mask.all(dim=-1)
-        if empty_row.any():
-            key_padding_mask = key_padding_mask.clone()
-            key_padding_mask[empty_row] = False
+        # Branchless on purpose: `if empty_row.any():` forced a GPU->CPU sync on
+        # every forward pass, draining the queue the CPU had built up ahead of
+        # the GPU. Same result -- an empty row gets every key unmasked.
+        empty_row = key_padding_mask.all(dim=-1, keepdim=True)
+        key_padding_mask = key_padding_mask & ~empty_row
         codes, _ = self.code_attn(query, hidden_states, hidden_states,
                                    key_padding_mask=key_padding_mask, need_weights=False)
         return codes  # (B, m, D)
@@ -597,22 +799,53 @@ class HybridDecisionModel(nn.Module):
         option_offset = 1 + self.n_context_codes
         logits_per_depth = []
         s = s0
+        thoughts = []  # per-pass scratchpad entries, each (B, n_scratch, D)
         for depth in range(k):
             # Scaled s0 re-injection + LayerNorm prevents variance explosion across depths
             if depth == 0:
                 block_input = s0
             else:
                 block_input = self.recurrent_norm(s + self.s0_gate * s0)
-            
+
             depth_idx = torch.full((B,), depth, dtype=torch.long, device=device)
             block_input = block_input + self.depth_embed(depth_idx).unsqueeze(1)
-            
+            if self.use_film_depth:
+                block_input = (block_input * self.depth_scale(depth_idx).unsqueeze(1)
+                               + self.depth_shift(depth_idx).unsqueeze(1))
+
+            # Cross-attention memory: the backbone output, plus everything this
+            # loop has concluded on earlier passes (empty on pass 1).
+            if self.n_scratch > 0 and thoughts:
+                thought_mem = torch.cat(thoughts, dim=1)  # (B, depth*n_scratch, D)
+                mem = torch.cat([H, thought_mem], dim=1)
+                mem_pad = torch.cat([
+                    memory_key_padding_mask,
+                    torch.zeros(B, thought_mem.size(1), dtype=torch.bool, device=device),
+                ], dim=1)
+            else:
+                mem, mem_pad = H, memory_key_padding_mask
+
+            for lm in self._lora_modules:
+                lm.depth = depth
+
             # Outer residual skip connection (s = LayerNorm(s + block_out))
-            block_out = self.recurrent_block(block_input, H, key_padding_mask=head_pad,
-                                            memory_key_padding_mask=memory_key_padding_mask)
+            block_out = self.recurrent_block(block_input, mem, key_padding_mask=head_pad,
+                                            memory_key_padding_mask=mem_pad)
             s = self.recurrent_norm_out(s + block_out)
-            
+
+            if self.n_scratch > 0:
+                # Masked mean over the head sequence -- padded option slots must
+                # not leak into the summary, or examples with few options would
+                # write systematically different thoughts than examples with many.
+                keep = (~head_pad).unsqueeze(-1).to(s.dtype)
+                summary = (s * keep).sum(1) / keep.sum(1).clamp(min=1.0)
+                th = self.scratch_proj(summary).view(B, self.n_scratch, self.hidden)
+                th = th * self.scratch_gate + self.scratch_pos(depth_idx).unsqueeze(1)
+                thoughts.append(th)
+
             opt_repr = s[:, option_offset:option_offset + Nmax, :]
+            if self.n_scorer_blocks > 0:
+                opt_repr = self.attn_scorer(opt_repr, ~batch.valid_mask, mem, mem_pad)
             scores = self.scorer(opt_repr).squeeze(-1)  # (B, Nmax)
             if maxsim_raw is not None:
                 scores = scores + self.maxsim_gate * maxsim_raw
@@ -663,6 +896,32 @@ class HybridDecisionModel(nn.Module):
         """
         for p in self.backbone.parameters():
             p.requires_grad = False
+
+    @torch.no_grad()
+    def init_new_from_pretrained(self, missing_keys):
+        """Initialize freshly added modules from trained weights instead of
+        from scratch. Called by load_flexible after a checkpoint is loaded.
+
+        attn_scorer: q/k/v input projections and the pre-attention LayerNorms
+        are copied from the last recurrent layer's self-attention (-> option
+        self-attention) and cross-attention (-> evidence cross-attention).
+        Those projections already know how to form useful queries/keys over
+        this model's hidden states; a random init would have to rediscover
+        that from a few thousand steps. out_proj stays at zero, so the copied
+        scorer still contributes nothing until the gradient says it should.
+        """
+        notes = []
+        if self.n_scorer_blocks > 0 and any(k.startswith("attn_scorer.") for k in missing_keys):
+            src = self.recurrent_block.layers[-1]
+            for blk in self.attn_scorer.blocks:
+                blk["self_attn"].in_proj_weight.copy_(src.self_attn.in_proj_weight)
+                blk["self_attn"].in_proj_bias.copy_(src.self_attn.in_proj_bias)
+                blk["cross_attn"].in_proj_weight.copy_(src.multihead_attn.in_proj_weight)
+                blk["cross_attn"].in_proj_bias.copy_(src.multihead_attn.in_proj_bias)
+                blk["norm_self"].load_state_dict(src.norm1.state_dict())
+                blk["norm_cross"].load_state_dict(src.norm2.state_dict())
+            notes.append("attn_scorer: q/k/v + norms copied from recurrent_block.layers[-1]; out_proj=0")
+        return notes
 
     def num_params(self):
         return sum(p.numel() for p in self.parameters())

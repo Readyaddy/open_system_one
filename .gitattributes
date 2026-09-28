@@ -1,0 +1,2 @@
+# Shell scripts run under WSL/Linux (Colab): always LF, whatever core.autocrlf says.
+*.sh text eol=lf

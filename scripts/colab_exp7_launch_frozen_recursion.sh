@@ -31,7 +31,8 @@ source ~/colab-cli-env/bin/activate
 SESSION=jepa-exp7-frozen
 LOCAL_ROOT=/mnt/d/projects/JEPA
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export WANDB_API_KEY="REDACTED_WANDB_KEY"
+# W&B key comes from the environment -- never hard-code it (it is committed to git).
+export WANDB_API_KEY="${WANDB_API_KEY:?set WANDB_API_KEY in your shell first (export WANDB_API_KEY=...)}"
 
 check_and_reconnect() {
   if [ "$2" -eq 0 ] && ! echo "$1" | grep -qi "session .* not found"; then

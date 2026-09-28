@@ -1,0 +1,124 @@
+[
+  {
+    "source": "intent/all(minus banking77)",
+    "n_val": 5399,
+    "chance": 0.0054,
+    "n_labels": 184,
+    "imbalance_train": 450.8,
+    "per_source_train": {
+      "clinc": 13089,
+      "snips": 8832,
+      "hwu": 14009,
+      "massive": 56
+    },
+    "top_labels": [
+      [
+        "snips::PlayMusic",
+        1803
+      ],
+      [
+        "snips::GetWeather",
+        1784
+      ],
+      [
+        "snips::SearchCreativeWork",
+        1772
+      ],
+      [
+        "snips::AddToPlaylist",
+        1744
+      ],
+      [
+        "snips::SearchScreeningEvent",
+        1729
+      ]
+    ],
+    "majority": 0.017,
+    "FLAGS": [],
+    "note": "options are sampled at train time (data.py) -- label frequency imbalance becomes a prior toward frequent labels whenever they are among the options; capped in data.py"
+  },
+  {
+    "source": "mcq/arc_challenge",
+    "n_val": 255,
+    "chance": 0.2498,
+    "options_only": 0.3451,
+    "longest_option": 0.2706,
+    "shortest_option": 0.2039,
+    "keyword_match": 0.0941,
+    "FLAGS": [
+      "options_only"
+    ]
+  },
+  {
+    "source": "mcq/arc_easy",
+    "n_val": 518,
+    "chance": 0.25,
+    "options_only": 0.3436,
+    "longest_option": 0.2529,
+    "shortest_option": 0.2297,
+    "keyword_match": 0.0869,
+    "FLAGS": [
+      "options_only"
+    ]
+  },
+  {
+    "source": "mcq/commonsense_qa",
+    "n_val": 1080,
+    "chance": 0.2,
+    "options_only": 0.1361,
+    "longest_option": 0.1981,
+    "shortest_option": 0.1611,
+    "keyword_match": 0.0204,
+    "FLAGS": []
+  },
+  {
+    "source": "mcq/hellaswag",
+    "n_val": 4992,
+    "chance": 0.25,
+    "options_only": 0.3069,
+    "longest_option": 0.249,
+    "shortest_option": 0.2396,
+    "keyword_match": 0.3009,
+    "FLAGS": [
+      "options_only"
+    ]
+  },
+  {
+    "source": "mcq/openbookqa",
+    "n_val": 574,
+    "chance": 0.25,
+    "options_only": 0.4582,
+    "longest_option": 0.4094,
+    "shortest_option": 0.1603,
+    "keyword_match": 0.0226,
+    "FLAGS": [
+      "options_only",
+      "longest_option"
+    ]
+  },
+  {
+    "source": "mcq/race",
+    "n_val": 9760,
+    "chance": 0.25,
+    "options_only": 0.3306,
+    "longest_option": 0.3031,
+    "shortest_option": 0.21,
+    "keyword_match": 0.3097,
+    "FLAGS": [
+      "options_only",
+      "longest_option"
+    ]
+  },
+  {
+    "source": "mcq/sciq",
+    "n_val": 1364,
+    "chance": 0.25,
+    "options_only": 0.4384,
+    "longest_option": 0.2713,
+    "shortest_option": 0.1957,
+    "keyword_match": 0.7801,
+    "FLAGS": [
+      "options_only"
+    ]
+  }
+]

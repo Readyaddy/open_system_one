@@ -9,7 +9,8 @@ source ~/colab-cli-env/bin/activate
 
 SESSION=jepa-train
 LOCAL_ROOT=/mnt/d/projects/JEPA
-export WANDB_API_KEY="REDACTED_WANDB_KEY"
+# W&B key comes from the environment -- never hard-code it (it is committed to git).
+export WANDB_API_KEY="${WANDB_API_KEY:?set WANDB_API_KEY in your shell first (export WANDB_API_KEY=...)}"
 
 echo "=== Verifying session is reachable ==="
 colab --auth=adc status -s "$SESSION"

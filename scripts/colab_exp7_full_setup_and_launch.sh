@@ -26,7 +26,8 @@ source ~/colab-cli-env/bin/activate
 SESSION=jepa-exp7-train
 LOCAL_ROOT=/mnt/d/projects/JEPA
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export WANDB_API_KEY="REDACTED_WANDB_KEY"
+# W&B key comes from the environment -- never hard-code it (it is committed to git).
+export WANDB_API_KEY="${WANDB_API_KEY:?set WANDB_API_KEY in your shell first (export WANDB_API_KEY=...)}"
 
 # AUTO-RECONNECT (see colab_reconnect.py's docstring): local session
 # tracking can get pruned on a single flaky assignments listing even

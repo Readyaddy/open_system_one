@@ -26,3 +26,26 @@ data/mcq_corpus/
 data/bool_corpus/
 data/score_corpus/
 data/diversity_corpus/
+data/exp7_hard_reasoning_corpus/
+data/hard_111.jsonl
+data/jevbench/
+
+# Credentials -- never commit (a W&B key was committed in 9a7b86d and had to be rotated)
+.env
+.env.*
+*.netrc
+_netrc
+.netrc
+*wandb_key*
+*.key
+secrets*.json
+wandb/
+
+# Rebuilt training corpora (~1.3 GB, some files >100 MB) -- regenerate with
+# experiments/exp9_scale/prepare_data.py; the manifest/audit/filter JSON reports ARE tracked
+data/exp7_bool_corpus/
+data/exp7_score_corpus/
+data/exp7_diversity_corpus/
+data/exp7_mcq_corpus/
+data/exp7_typed_decisions/
+data/exp7_longctx_reasoning_corpus*/

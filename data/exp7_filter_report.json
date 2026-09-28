@@ -1,0 +1,391 @@
+{
+  "bool": {
+    "boolq": {
+      "train_before": 5000,
+      "train_after": 3640,
+      "rounds": [
+        {
+          "round": 0,
+          "n": 5000,
+          "question_only": 0.6042,
+          "context_only": 0.6045
+        },
+        {
+          "round": 1,
+          "n": 4744,
+          "question_only": 0.5965,
+          "context_only": 0.5906
+        },
+        {
+          "round": 2,
+          "n": 4490,
+          "question_only": 0.5787,
+          "context_only": 0.5704
+        },
+        {
+          "round": 3,
+          "n": 4264,
+          "question_only": 0.5643,
+          "context_only": 0.5598
+        },
+        {
+          "round": 4,
+          "n": 4048,
+          "question_only": 0.555,
+          "context_only": 0.5437
+        },
+        {
+          "round": 5,
+          "n": 3840,
+          "question_only": 0.5326,
+          "context_only": 0.5251
+        }
+      ],
+      "val_blind_easy_frac": {
+        "question_only": 0.593,
+        "context_only": 0.628
+      }
+    },
+    "mnli": {
+      "train_before": 20000,
+      "train_after": 16896,
+      "rounds": [
+        {
+          "round": 0,
+          "n": 20000,
+          "question_only": 0.604
+        },
+        {
+          "round": 1,
+          "n": 18866,
+          "question_only": 0.5769
+        },
+        {
+          "round": 2,
+          "n": 17884,
+          "question_only": 0.5484
+        },
+        {
+          "round": 3,
+          "n": 16896,
+          "question_only": 0.5146
+        }
+      ],
+      "val_blind_easy_frac": {
+        "question_only": 0.597
+      }
+    },
+    "qqp": {
+      "train_before": 16000,
+      "train_after": 11406,
+      "rounds": [
+        {
+          "round": 0,
+          "n": 16000,
+          "question_only": 0.6786,
+          "context_only": 0.6782
+        },
+        {
+          "round": 1,
+          "n": 15160,
+          "question_only": 0.668,
+          "context_only": 0.6665
+        },
+        {
+          "round": 2,
+          "n": 14340,
+          "question_only": 0.6542,
+          "context_only": 0.6557
+        },
+        {
+          "round": 3,
+          "n": 13532,
+          "question_only": 0.6406,
+          "context_only": 0.6406
+        },
+        {
+          "round": 4,
+          "n": 12750,
+          "question_only": 0.6257,
+          "context_only": 0.6258
+        },
+        {
+          "round": 5,
+          "n": 12054,
+          "question_only": 0.6101,
+          "context_only": 0.6097
+        }
+      ],
+      "val_blind_easy_frac": {
+        "question_only": 0.679,
+        "context_only": 0.672
+      }
+    }
+  },
+  "diversity": {
+    "dbpedia14": {
+      "train_before": 21000,
+      "train_after": 17149,
+      "rounds": [
+        {
+          "round": 0,
+          "n": 21000,
+          "length_only": 0.1505
+        },
+        {
+          "round": 1,
+          "n": 19950,
+          "length_only": 0.1278
+        },
+        {
+          "round": 2,
+          "n": 18953,
+          "length_only": 0.1121
+        },
+        {
+          "round": 3,
+          "n": 18006,
+          "length_only": 0.0934
+        },
+        {
+          "round": 4,
+          "n": 17149,
+          "length_only": 0.0876
+        }
+      ],
+      "val_blind_easy_frac": {
+        "length_only": 0.1419
+      }
+    },
+    "tweet_offensive": {
+      "train_before": 4000,
+      "train_after": 4000,
+      "rounds": [
+        {
+          "round": 0,
+          "n": 4000,
+          "length_only": 0.5188
+        }
+      ],
+      "val_blind_easy_frac": {
+        "length_only": 0.5547
+      }
+    },
+    "yahoo_answers": {
+      "train_before": 15000,
+      "train_after": 12862,
+      "rounds": [
+        {
+          "round": 0,
+          "n": 15000,
+          "length_only": 0.1544
+        },
+        {
+          "round": 1,
+          "n": 14250,
+          "length_only": 0.1364
+        },
+        {
+          "round": 2,
+          "n": 13538,
+          "length_only": 0.1284
+        },
+        {
+          "round": 3,
+          "n": 12862,
+          "length_only": 0.1101
+        }
+      ],
+      "val_blind_easy_frac": {
+        "length_only": 0.151
+      }
+    }
+  },
+  "mcq": {
+    "arc_challenge": {
+      "train_before": 2055,
+      "train_after": 1856,
+      "rounds": [
+        {
+          "round": 0,
+          "n": 2055,
+          "options_only": 0.3365
+        },
+        {
+          "round": 1,
+          "n": 1953,
+          "options_only": 0.2861
+        },
+        {
+          "round": 2,
+          "n": 1856,
+          "options_only": 0.2357
+        }
+      ],
+      "val_blind_easy_frac": {
+        "options_only": 0.3412
+      }
+    },
+    "arc_easy": {
+      "train_before": 4126,
+      "train_after": 3724,
+      "rounds": [
+        {
+          "round": 0,
+          "n": 4126,
+          "options_only": 0.3656
+        },
+        {
+          "round": 1,
+          "n": 3920,
+          "options_only": 0.3198
+        },
+        {
+          "round": 2,
+          "n": 3724,
+          "options_only": 0.2711
+        },
+        {
+          "round": 3,
+          "n": 3538,
+          "options_only": 0.2287
+        },
+        {
+          "reverted_round": 3
+        }
+      ],
+      "val_blind_easy_frac": {
+        "options_only": 0.3436
+      }
+    },
+    "hellaswag": {
+      "train_before": 39796,
+      "train_after": 37807,
+      "rounds": [
+        {
+          "round": 0,
+          "n": 39796,
+          "options_only": 0.318
+        },
+        {
+          "round": 1,
+          "n": 37807,
+          "options_only": 0.272
+        },
+        {
+          "round": 2,
+          "n": 35917,
+          "options_only": 0.2266
+        },
+        {
+          "reverted_round": 2
+        }
+      ],
+      "val_blind_easy_frac": {
+        "options_only": 0.3251
+      }
+    },
+    "openbookqa": {
+      "train_before": 4566,
+      "train_after": 3359,
+      "rounds": [
+        {
+          "round": 0,
+          "n": 4566,
+          "options_only": 0.4889
+        },
+        {
+          "round": 1,
+          "n": 4338,
+          "options_only": 0.4633
+        },
+        {
+          "round": 2,
+          "n": 4122,
+          "options_only": 0.4375
+        },
+        {
+          "round": 3,
+          "n": 3916,
+          "options_only": 0.4064
+        },
+        {
+          "round": 4,
+          "n": 3721,
+          "options_only": 0.372
+        },
+        {
+          "round": 5,
+          "n": 3535,
+          "options_only": 0.3237
+        }
+      ],
+      "val_blind_easy_frac": {
+        "options_only": 0.4686
+      }
+    },
+    "race": {
+      "train_before": 78078,
+      "train_after": 66944,
+      "rounds": [
+        {
+          "round": 0,
+          "n": 78078,
+          "options_only": 0.378
+        },
+        {
+          "round": 1,
+          "n": 74175,
+          "options_only": 0.3402
+        },
+        {
+          "round": 2,
+          "n": 70467,
+          "options_only": 0.2989
+        },
+        {
+          "round": 3,
+          "n": 66944,
+          "options_only": 0.2562
+        }
+      ],
+      "val_blind_easy_frac": {
+        "options_only": 0.3778
+      }
+    },
+    "sciq": {
+      "train_before": 10901,
+      "train_after": 8881,
+      "rounds": [
+        {
+          "round": 0,
+          "n": 10901,
+          "options_only": 0.4126
+        },
+        {
+          "round": 1,
+          "n": 10356,
+          "options_only": 0.3753
+        },
+        {
+          "round": 2,
+          "n": 9839,
+          "options_only": 0.3372
+        },
+        {
+          "round": 3,
+          "n": 9348,
+          "options_only": 0.2923
+        },
+        {
+          "round": 4,
+          "n": 8881,
+          "options_only": 0.2494
+        }
+      ],
+      "val_blind_easy_frac": {
+        "options_only": 0.4457
+      }
+    }
+  }
+}
